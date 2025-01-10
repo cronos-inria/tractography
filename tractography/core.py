@@ -1,5 +1,6 @@
 import nibabel as nib
 import numpy as np
+import numpy.typing as npt
 import scipy
 
 
@@ -47,12 +48,29 @@ def ishtmtx(azimuths, colatitudes, n_coefficients):
     return matrix.T
 
 
-def remove_duplicate_endpoints(streamlines, dt):
+def remove_duplicate_endpoints(streamlines: npt.ArrayLike, step_size: float) -> list(npt.NDArray):
+    """Removes duplicate points at the end of streamlines
+
+    During the tractography process, streamlines are sometimes generated with
+    duplicated point at the end. For example when the streamline exists the
+    tracking mask. This function removes these points.
+
+    Args:
+        streamlines: The streamlines whose duplicates endpoints should be
+            removed.
+        step_size: The step size used to generate the streamlines.
+
+    Returns:
+        The new streamlines, with the duplicate endpoints removed.
+
+    """
+    d = np.power(np.diff(streamlines, axis=1), 2)
+    sum_squared = d[..., 0] + d[..., 1] + d[..., 2]  # much faster than np.sum
+
     new_streamlines = []
-    for streamline in streamlines:
-        diff = np.sum(np.diff(streamline, axis=0) ** 2, axis=1)
-        i = np.searchsorted(diff[::-1], dt**2 / 2)
-        new_streamlines.append(streamline[: len(streamline) - i - 1])
+    for streamline, sq in zip(streamlines, sum_squared):
+        i = np.searchsorted(sq[::-1], step_size**2 / 2)
+        new_streamlines.append(streamline[: len(streamline) - i])
 
     return new_streamlines
 
