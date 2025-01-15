@@ -18,9 +18,6 @@ _nb_units = _device.max_compute_units
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
 
-# The number of streamlines to generate per kernel run.
-BATCH_SIZE = 100000
-
 
 def _opencl_algorithm(name, fod_sampling, prepare_args):
     """Generates an OpenCL tracking algorithm"""
@@ -40,9 +37,9 @@ def _opencl_algorithm(name, fod_sampling, prepare_args):
         # Streamlines are generated in batches, allocate the required output
         # buffer and the corresponding one for the seeds.
         n_streamlines = len(seeds)
-        n_batches = n_streamlines // BATCH_SIZE
+        n_batches = n_streamlines // tg.BATCH_SIZE
         streamlines = [
-            np.empty((BATCH_SIZE, n_steps, 3), dtype=np.float32)
+            np.empty((tg.BATCH_SIZE, n_steps, 3), dtype=np.float32)
             for _ in range(n_batches)
         ]
         streamline_cl = _write_buffer(streamlines[0])
@@ -72,7 +69,7 @@ def _opencl_algorithm(name, fod_sampling, prepare_args):
                 _update_buffer(b, c)
 
             # Track streamlines.
-            program.tractography(_queue, (BATCH_SIZE,), None, *args)
+            program.tractography(_queue, (tg.BATCH_SIZE,), None, *args)
             cl.enqueue_copy(_queue, s, streamline_cl)
 
         return np.vstack(streamlines)
@@ -124,7 +121,7 @@ def _args_det(fod_values, affine, vertices, seeds, step_size, n_steps, max_angle
     vertices_cl = _read_buffer(vertices.astype(np.float32))
 
     seeds_array = tg.seeds.to_array(seeds).astype(np.float32)
-    seeds_cl = _read_buffer(seeds_array[:BATCH_SIZE])
+    seeds_cl = _read_buffer(seeds_array[:tg.BATCH_SIZE])
 
     max_angle_ratio = np.cos(np.deg2rad(max_angle))
     args = [
@@ -136,7 +133,7 @@ def _args_det(fod_values, affine, vertices, seeds, step_size, n_steps, max_angle
         np.float32(max_angle_ratio),
     ]
 
-    n_batches = len(seeds) / BATCH_SIZE
+    n_batches = len(seeds) / tg.BATCH_SIZE
     batch_data = [
         [(d, seeds_cl) for d in np.split(seeds_array, n_batches)],
     ]
@@ -153,10 +150,10 @@ def _args_prob(fod_values, affine, vertices, seeds, step_size, n_steps, max_angl
     )
 
     randoms = np.random.rand(len(seeds), n_steps).astype(dtype=np.float32)
-    randoms_cl = _read_buffer(randoms[:BATCH_SIZE])
+    randoms_cl = _read_buffer(randoms[:tg.BATCH_SIZE])
     args.append(randoms_cl)
 
-    n_batches = len(seeds) / BATCH_SIZE
+    n_batches = len(seeds) / tg.BATCH_SIZE
     batch_data.append([(d, randoms_cl) for d in np.split(randoms, n_batches)])
 
     return args, batch_data

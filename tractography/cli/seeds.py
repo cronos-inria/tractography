@@ -31,6 +31,12 @@ the path to the generated seeds
 
 def main(surface_path: Path, n_seeds: int, seeds_path: Path, **kwargs: dict):
     """Generate a seeds from the surface"""
+
+    if n_seeds % tg.BATCH_SIZE != 0:
+        raise SystemExit(
+            f"Error: The number of seeds is not a multiple of the batch size ({tg.BATCH_SIZE})."
+        )
+
     surface = nimesh.io.load(surface_path, hemisphere="lh", surface="white")
     seeds = tg.seeds.from_surface(surface, n_seeds)
     tg.seeds.save(seeds_path, seeds)
