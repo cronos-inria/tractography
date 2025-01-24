@@ -5,7 +5,6 @@ allows the user to generate tractography histograms from files.
 
 """
 
-from enum import Enum
 from pathlib import Path
 
 import nibabel as nib
@@ -61,18 +60,8 @@ the size of each step
 """
 
 
-class Algorithm(Enum):
-    """The various tractography algorithms"""
-
-    DETERMINISTIC = "det"
-    PROBABILISTIC = "prob"
-
-    def __str__(self):
-        return self.value
-
-
 def main(
-    algorithm: Algorithm,
+    algorithm: tg.Algorithm,
     image_path: Path,
     seeds_path: Path,
     histogram_path: Path,
@@ -110,7 +99,7 @@ def main(
     n_splits = len(seeds) // tg.BATCH_SIZE
     for subseeds in np.array_split(seeds, n_splits):
 
-        if algorithm == Algorithm.DETERMINISTIC:
+        if algorithm == tg.Algorithm.DETERMINISTIC:
             streamlines = tg.algorithms.deterministic(
                 data, nii.affine, subseeds, step_size, n_steps, max_angle
             )
@@ -137,7 +126,7 @@ def add_parser(subparsers):
     """Add the surparser for the mask subcommand"""
     subparser = subparsers.add_parser("histogram", description=_DESCRIPTION, help=_HELP)
     subparser.add_argument(
-        "algorithm", type=Algorithm, choices=list(Algorithm), help=_ALGORITHM_HELP
+        "algorithm", type=tg.Algorithm, choices=list(tg.Algorithm), help=_ALGORITHM_HELP
     )
     subparser.add_argument("image_path", type=Path, help=_IMAGE_HELP)
     subparser.add_argument("seeds_path", type=Path, help=_SEEDS_HELP)

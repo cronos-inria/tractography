@@ -5,11 +5,9 @@ allows the user to perform tractography from files.
 
 """
 
-from enum import Enum
 from pathlib import Path
 
 import nibabel as nib
-import nimesh
 import numpy as np
 
 import tractography as tg
@@ -57,18 +55,8 @@ the size of each step
 """
 
 
-class Algorithm(Enum):
-    """The various tractography algorithms"""
-
-    DETERMINISTIC = "det"
-    PROBABILISTIC = "prob"
-
-    def __str__(self):
-        return self.value
-
-
 def main(
-    algorithm: Algorithm,
+    algorithm: tg.Algorithm,
     image_path: Path,
     seeds_path: Path,
     tractogram_path: Path,
@@ -92,7 +80,7 @@ def main(
         mask = mask_nii.get_fdata()
         data = tg.core.apply_mask(data, nii.affine, mask, mask_nii.affine)
 
-    if algorithm == Algorithm.DETERMINISTIC:
+    if algorithm == tg.Algorithm.DETERMINISTIC:
         streamlines = tg.algorithms.deterministic(
             data, nii.affine, seeds, step_size, n_steps, max_angle
         )
@@ -117,7 +105,7 @@ def add_parser(subparsers):
         "tractogram", description=_DESCRIPTION, help=_HELP
     )
     subparser.add_argument(
-        "algorithm", type=Algorithm, choices=list(Algorithm), help=_ALGORITHM_HELP
+        "algorithm", type=tg.Algorithm, choices=list(tg.Algorithm), help=_ALGORITHM_HELP
     )
     subparser.add_argument("image_path", type=Path, help=_IMAGE_HELP)
     subparser.add_argument("seeds_path", type=Path, help=_SEEDS_HELP)

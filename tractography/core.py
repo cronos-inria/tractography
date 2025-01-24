@@ -1,7 +1,19 @@
+from enum import Enum
+
 import nibabel as nib
 import numpy as np
 import numpy.typing as npt
 import scipy
+
+
+class Algorithm(Enum):
+    """The available tractography algorithms"""
+
+    DETERMINISTIC = "det"
+    PROBABILISTIC = "prob"
+
+    def __str__(self):
+        return self.value
 
 
 def cart2sph(x, y, z):
