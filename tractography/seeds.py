@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import nibabel as nib
 import nimesh
 import numpy as np
 import numpy.typing as npt
@@ -47,6 +48,33 @@ def from_surface(surface: nimesh.Mesh, n_seeds: int) -> list[Seed]:
     # The orientations of the seeds are just triangle normals.
     normals = _triangle_normals(vertices, triangles)
     orientations = -normals[indices]
+
+    return [Seed(el, n) for el, n in zip(locations, orientations)]
+
+
+def from_mask(mask: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
+    """Generate seeds from a 3D mask
+
+    The seeds are generated randomly inside voxels with non-zero
+    values in the mask. The orientations are random.
+
+    Args:
+        mask: The numpy array containing the mask.
+        affine: The affine transform to native space.
+        n_seeds: The number of seeds to generate.
+
+    Return:
+        A list of `n_seeds` seeds suitable for tractography
+
+    """
+
+    # Get the non-zero voxels.
+    voxels = np.array(list(zip(*np.nonzero(mask))))
+    indices = np.random.randint(len(voxels), size=n_seeds)
+    locations_voxel = voxels[indices] + np.random.rand(n_seeds, 3)
+    locations = nib.affines.apply_affine(affine, locations_voxel)
+    orientations = np.random.rand(n_seeds, 3)
+    orientations /= np.linalg.norm(orientations, axis=1, keepdims=True)
 
     return [Seed(el, n) for el, n in zip(locations, orientations)]
 
