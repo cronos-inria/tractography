@@ -101,8 +101,5 @@ def apply_mask(image, image_affine, mask, mask_affine):
     affine = np.dot(np.linalg.inv(mask_affine), image_affine)
     mask_voxels = nib.affines.apply_affine(affine, image_voxels).astype(int)
     mask_values = mask[*mask_voxels.T].reshape(image.shape[:3])
-    nib.save(
-        nib.Nifti1Image(mask_values.astype(np.uint8), image_affine), "test-mask.nii.gz"
-    )
 
     return image * mask_values[..., None]
