@@ -80,18 +80,9 @@ def main(
         mask = mask_nii.get_fdata()
         data = tg.core.apply_mask(data, nii.affine, mask, mask_nii.affine)
 
-    if algorithm == tg.Algorithm.DETERMINISTIC:
-        streamlines = tg.algorithms.deterministic(
-            data, nii.affine, seeds, step_size, n_steps, max_angle
-        )
-    else:
-        streamlines = tg.algorithms.probabilistic(
-            data, nii.affine, seeds, step_size, n_steps, max_angle
-        )
-
-    # Clean a bit.
-    streamlines = tg.core.remove_duplicate_endpoints(streamlines, step_size)
-    streamlines = [s for s in streamlines if len(s) != 0]
+    streamlines = tg.tractogram(
+        data, nii.affine, seeds, algorithm, step_size, n_steps, max_angle
+    )
 
     # Save the resulting tractogram.
     tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))

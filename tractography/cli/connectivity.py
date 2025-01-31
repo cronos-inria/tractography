@@ -110,18 +110,9 @@ def main(
         subsurface = nimesh.Mesh(surface.vertices, triangles)
         seeds = tg.seeds.from_surface(subsurface, tg.BATCH_SIZE)
 
-        if algorithm == tg.Algorithm.DETERMINISTIC:
-            streamlines = tg.algorithms.deterministic(
-                data, nii.affine, seeds, step_size, n_steps, max_angle
-            )
-        else:
-            streamlines = tg.algorithms.probabilistic(
-                data, nii.affine, seeds, step_size, n_steps, max_angle
-            )
-
-        # Clean a bit.
-        streamlines = tg.core.remove_duplicate_endpoints(streamlines, step_size)
-        streamlines = [s for s in streamlines if len(s) != 0]
+        streamlines = tg.tractogram(
+            data, nii.affine, seeds, algorithm, step_size, n_steps, max_angle
+        )
 
         # Add the streamlines to the connectivity.
         vertex_connectivity = map_vertices(surface.vertices, streamlines)

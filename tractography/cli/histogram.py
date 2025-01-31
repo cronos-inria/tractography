@@ -99,18 +99,9 @@ def main(
     n_splits = len(seeds) // tg.BATCH_SIZE
     for subseeds in np.array_split(seeds, n_splits):
 
-        if algorithm == tg.Algorithm.DETERMINISTIC:
-            streamlines = tg.algorithms.deterministic(
-                data, nii.affine, subseeds, step_size, n_steps, max_angle
-            )
-        else:
-            streamlines = tg.algorithms.probabilistic(
-                data, nii.affine, subseeds, step_size, n_steps, max_angle
-            )
-
-        # Clean a bit.
-        streamlines = tg.core.remove_duplicate_endpoints(streamlines, step_size)
-        streamlines = [s for s in streamlines if len(s) != 0]
+        streamlines = tg.tractogram(
+            data, nii.affine, subseeds, algorithm, step_size, n_steps, max_angle
+        )
 
         # Add the streamlines to the histogram.
         points = np.vstack(streamlines)
