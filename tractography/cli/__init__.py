@@ -1,7 +1,7 @@
 import argparse
 import pkgutil
 
-import tractography
+import tractography as tg
 
 
 DESCRIPTION = """\
@@ -17,11 +17,12 @@ def parse_arguments():
 
     # Load all the sub commands from the streamlines.cli.commands package
     # dynamically.
-    package = tractography.cli
+    package = tg.cli
     prefix = package.__name__ + "."
     for _, name, _ in pkgutil.iter_modules(package.__path__, prefix):
         module = __import__(name, fromlist=["nothing"])
-        module.add_parser(subparsers)
+        if "add_parser" in module.__dict__:
+            module.add_parser(subparsers)
 
     return parser.parse_args()
 

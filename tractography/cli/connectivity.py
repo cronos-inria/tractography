@@ -44,30 +44,19 @@ _MASK_HELP = """
 the filename of the mask used for tractography
 """
 
-_N_STEPS = """
-the number of steps for each streamline
-"""
-
-_MAX_ANGLE = """
-the maximum angle between consecutive steps
-"""
-
-_STEP_SIZE = """
-the size of each step
-"""
-
 
 def main(
     algorithm: tg.Algorithm,
     image_path: Path,
     surface_path: Path,
     connectivity_path: Path,
-    step_size: int,
-    n_steps: int,
-    max_angle: float,
     **kwargs,
 ):
     """Entry-point of the tractography CLI"""
+
+    # Load the default config and set user parameters.
+    config = tg.configuration.load()
+    tg.cli.utils.set_tractography_config(config, kwargs)
 
     # Merge left and right hemisphere.
     lh = nimesh.io.load(surface_path, hemisphere="lh", surface="white")
@@ -110,9 +99,7 @@ def main(
         subsurface = nimesh.Mesh(surface.vertices, triangles)
         seeds = tg.seeds.from_surface(subsurface, tg.BATCH_SIZE)
 
-        streamlines = tg.tractogram(
-            data, nii.affine, seeds, algorithm, step_size, n_steps, max_angle
-        )
+        streamlines = tg.tractogram(data, nii.affine, seeds, algorithm, config)
 
         # Add the streamlines to the connectivity.
         vertex_connectivity = map_vertices(surface.vertices, streamlines)
@@ -141,33 +128,11 @@ def add_parser(subparsers):
     subparser.add_argument("surface_path", type=Path, help=_SURFACE_PATH_HELP)
     subparser.add_argument("connectivity_path", type=Path, help=_CONNECTIVITY_HELP)
     subparser.add_argument("--mask", type=Path, help=_MASK_HELP)
-    subparser.add_argument(
-        "--number-of-steps",
-        "-ns",
-        dest="n_steps",
-        type=int,
-        default=2000,
-        help=_N_STEPS,
-    )
-    subparser.add_argument(
-        "--maximum-angle",
-        "-ma",
-        dest="max_angle",
-        type=float,
-        default=45,
-        help=_MAX_ANGLE,
-    )
-    subparser.add_argument(
-        "--step-size",
-        "-ss",
-        dest="step_size",
-        type=float,
-        default=0.25,
-        help=_STEP_SIZE,
-    )
+
+    # Add the common configuration options.
+    tg.cli.utils.add_tractography_config(subparser)
 
     subparser.set_defaults(func=main)
-
     return subparser
 
 

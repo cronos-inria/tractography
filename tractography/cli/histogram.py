@@ -47,31 +47,20 @@ _SCALE_HELP = """
 the scaling factor to apply to the histogram (2 means 2**3 more voxels)
 """
 
-_N_STEPS = """
-the number of steps for each streamline
-"""
-
-_MAX_ANGLE = """
-the maximum angle between consecutive steps
-"""
-
-_STEP_SIZE = """
-the size of each step
-"""
-
 
 def main(
     algorithm: tg.Algorithm,
     image_path: Path,
     seeds_path: Path,
     histogram_path: Path,
-    step_size: int,
-    n_steps: int,
-    max_angle: float,
     scale: int,
     **kwargs,
 ):
     """Entry-point of the tractography CLI"""
+
+    # Load the default config and set user parameters.
+    config = tg.configuration.load()
+    tg.cli.utils.set_tractography_config(config, kwargs)
 
     # Load the seeds from the provided file.
     seeds = tg.seeds.load(seeds_path)
@@ -99,9 +88,7 @@ def main(
     n_splits = len(seeds) // tg.BATCH_SIZE
     for subseeds in np.array_split(seeds, n_splits):
 
-        streamlines = tg.tractogram(
-            data, nii.affine, subseeds, algorithm, step_size, n_steps, max_angle
-        )
+        streamlines = tg.tractogram(data, nii.affine, subseeds, algorithm, config)
 
         # Add the streamlines to the histogram.
         points = np.vstack(streamlines)
@@ -124,33 +111,11 @@ def add_parser(subparsers):
     subparser.add_argument("histogram_path", type=Path, help=_HISTOGRAM_HELP)
     subparser.add_argument("--mask", type=Path, help=_MASK_HELP)
     subparser.add_argument("--scale", type=int, default=2, help=_SCALE_HELP)
-    subparser.add_argument(
-        "--number-of-steps",
-        "-ns",
-        dest="n_steps",
-        type=int,
-        default=2000,
-        help=_N_STEPS,
-    )
-    subparser.add_argument(
-        "--maximum-angle",
-        "-ma",
-        dest="max_angle",
-        type=float,
-        default=45,
-        help=_MAX_ANGLE,
-    )
-    subparser.add_argument(
-        "--step-size",
-        "-ss",
-        dest="step_size",
-        type=float,
-        default=0.25,
-        help=_STEP_SIZE,
-    )
+
+    # Add the common configuration options.
+    tg.cli.utils.add_tractography_config(subparser)
 
     subparser.set_defaults(func=main)
-
     return subparser
 
 

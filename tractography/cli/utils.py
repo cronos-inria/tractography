@@ -1,0 +1,50 @@
+import argparse
+
+import tractography as tg
+
+_MAX_ANGLE = """
+the maximum angle between consecutive steps
+"""
+
+
+def add_tractography_config(parser: argparse.ArgumentParser):
+    """Add the common tractography configuration to a parser"""
+
+    parser.add_argument(
+        "--batch-size",
+        dest="batch_size",
+        type=float,
+    )
+
+    parser.add_argument(
+        "--maximum-angle",
+        dest="max_angle",
+        type=float,
+        help=_MAX_ANGLE,
+    )
+    parser.add_argument(
+        "--streamline-minimum-length",
+        dest="min_length",
+        type=float,
+    )
+    parser.add_argument(
+        "--streamline-maximum-length",
+        dest="max_length",
+        type=float,
+    )
+
+
+def set_tractography_config(config: tg.configuration.Configuration, kwargs):
+    """Map CLI arguments back to the configuration"""
+
+    if kwargs["batch_size"] is not None:
+        config.batch_size = kwargs["batch_size"]
+
+    if kwargs["max_angle"] is not None:
+        config.max_angle = kwargs["max_angle"]
+
+    if kwargs["min_length"] is not None:
+        config.streamline.length.minimum = kwargs["min_length"]
+
+    if kwargs["max_length"] is not None:
+        config.streamline.length.maximum = kwargs["max_length"]

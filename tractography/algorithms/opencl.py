@@ -22,7 +22,7 @@ _OPENCL_DIR = Path(__file__).parents[2] / "src"
 def _opencl_algorithm(name, fod_sampling, prepare_args):
     """Generates an OpenCL tracking algorithm"""
 
-    def algorithm(fod, affine, seeds, step_size, n_steps, max_angle):
+    def algorithm(fod, affine, seeds, config):
         """Generic OpenCL tractography algorithm"""
 
         # Generate a set of orientation where the FODs are evaluated.
@@ -30,16 +30,14 @@ def _opencl_algorithm(name, fod_sampling, prepare_args):
 
         # Prepare the arguments for the kernel and the required batch
         # data.
-        args, batch_data = prepare_args(
-            fod_values, affine, vertices, seeds, step_size, n_steps, max_angle
-        )
+        args, batch_data = prepare_args(fod_values, affine, vertices, seeds, config)
 
         # Streamlines are generated in batches, allocate the required output
         # buffer and the corresponding one for the seeds.
         n_streamlines = len(seeds)
-        n_batches = n_streamlines // tg.BATCH_SIZE
+        n_batches = n_streamlines // config.batch_size
         streamlines = [
-            np.empty((tg.BATCH_SIZE, n_steps, 3), dtype=np.float32)
+            np.empty((config.batch_size, config.n_steps, 3), dtype=np.float32)
             for _ in range(n_batches)
         ]
         streamline_cl = _write_buffer(streamlines[0])
@@ -56,7 +54,7 @@ def _opencl_algorithm(name, fod_sampling, prepare_args):
             "ny": fod.shape[1],
             "nz": fod.shape[2],
             "n_directions": len(vertices),
-            "n_steps": n_steps,
+            "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
         source = template.safe_substitute(values)
@@ -69,7 +67,7 @@ def _opencl_algorithm(name, fod_sampling, prepare_args):
                 _update_buffer(b, c)
 
             # Track streamlines.
-            program.tractography(_queue, (tg.BATCH_SIZE,), None, *args)
+            program.tractography(_queue, (config.batch_size,), None, *args)
             cl.enqueue_copy(_queue, s, streamline_cl)
 
         return np.vstack(streamlines)
@@ -113,7 +111,7 @@ def _write_buffer(data):
     return buffer
 
 
-def _args_det(fod_values, affine, vertices, seeds, step_size, n_steps, max_angle):
+def _args_det(fod_values, affine, vertices, seeds, config):
 
     # Send all global data to the device except for the seed information.
     fod_values_cl = _read_buffer(fod_values.astype(np.float32))
@@ -121,19 +119,19 @@ def _args_det(fod_values, affine, vertices, seeds, step_size, n_steps, max_angle
     vertices_cl = _read_buffer(vertices.astype(np.float32))
 
     seeds_array = tg.seeds.to_array(seeds).astype(np.float32)
-    seeds_cl = _read_buffer(seeds_array[:tg.BATCH_SIZE])
+    seeds_cl = _read_buffer(seeds_array[: config.batch_size])
 
-    max_angle_ratio = np.cos(np.deg2rad(max_angle))
+    max_angle_ratio = np.cos(np.deg2rad(config.max_angle))
     args = [
         fod_values_cl,
         affine_cl,
         vertices_cl,
         seeds_cl,
-        np.float32(step_size),
+        np.float32(config.step_size),
         np.float32(max_angle_ratio),
     ]
 
-    n_batches = len(seeds) / tg.BATCH_SIZE
+    n_batches = len(seeds) / config.batch_size
     batch_data = [
         [(d, seeds_cl) for d in np.split(seeds_array, n_batches)],
     ]
@@ -141,19 +139,17 @@ def _args_det(fod_values, affine, vertices, seeds, step_size, n_steps, max_angle
     return args, batch_data
 
 
-def _args_prob(fod_values, affine, vertices, seeds, step_size, n_steps, max_angle):
+def _args_prob(fod_values, affine, vertices, seeds, config):
 
     # The arguments are the same as for the deterministic case, but with
     # the random values added.
-    args, batch_data = _args_det(
-        fod_values, affine, vertices, seeds, step_size, n_steps, max_angle
-    )
+    args, batch_data = _args_det(fod_values, affine, vertices, seeds, config)
 
-    randoms = np.random.rand(len(seeds), n_steps).astype(dtype=np.float32)
-    randoms_cl = _read_buffer(randoms[:tg.BATCH_SIZE])
+    randoms = np.random.rand(len(seeds), config.n_steps).astype(dtype=np.float32)
+    randoms_cl = _read_buffer(randoms[: config.batch_size])
     args.append(randoms_cl)
 
-    n_batches = len(seeds) / tg.BATCH_SIZE
+    n_batches = len(seeds) / config.batch_size
     batch_data.append([(d, randoms_cl) for d in np.split(randoms, n_batches)])
 
     return args, batch_data

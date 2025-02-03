@@ -1,0 +1,16 @@
+# Default configuration file for tractography.
+
+
+# The number of streamlines generated per batch.
+batch_size = 100000
+
+# The default step size.
+step_size = 0.25 # in seconds
+
+# The maximum angle between steps.
+max_angle = 45 # in degrees
+
+
+[streamline]
+length.minimum = 10.0  # in mm
+length.maximum = 400.0 # in mm

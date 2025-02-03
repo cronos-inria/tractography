@@ -1,7 +1,5 @@
-from . import algorithms, core, seeds
+from . import algorithms, configuration, core, seeds
 from .core import Algorithm
-
-BATCH_SIZE = 100000
 
 
 def tractogram(
@@ -9,9 +7,7 @@ def tractogram(
     affine,
     seeds: list[seeds.Seed],
     algorithm: Algorithm,
-    step_size,
-    n_steps,
-    max_angle,
+    config: configuration.Configuration,
 ):
     """Generate a tractogram from dMRI data
 
@@ -35,18 +31,14 @@ def tractogram(
     """
 
     if algorithm == Algorithm.DETERMINISTIC:
-        streamlines = algorithms.deterministic(
-            data, affine, seeds, step_size, n_steps, max_angle
-        )
+        streamlines = algorithms.deterministic(data, affine, seeds, config)
     elif algorithm == Algorithm.PROBABILISTIC:
-        streamlines = algorithms.probabilistic(
-            data, affine, seeds, step_size, n_steps, max_angle
-        )
+        streamlines = algorithms.probabilistic(data, affine, seeds, config)
     else:
         raise ValueError(f"No algorithm associated with {algorithm}.")
 
     # Clean a bit.
-    streamlines = core.remove_duplicate_endpoints(streamlines, step_size)
-    streamlines = [s for s in streamlines if len(s) != 0]
+    streamlines = core.remove_duplicate_endpoints(streamlines, config.step_size)
+    streamlines = [s for s in streamlines if len(s) != config.min_steps]
 
     return streamlines
