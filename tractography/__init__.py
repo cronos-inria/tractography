@@ -1,4 +1,4 @@
-from . import algorithms, configuration, core, seeds
+from . import algorithms, configuration, core, seeds, utils
 from .core import Algorithm
 
 
