@@ -71,9 +71,9 @@ def from_mask(mask: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed
     # Get the non-zero voxels.
     voxels = np.array(list(zip(*np.nonzero(mask))))
     indices = np.random.randint(len(voxels), size=n_seeds)
-    locations_voxel = voxels[indices] + np.random.rand(n_seeds, 3)
+    locations_voxel = voxels[indices] + np.random.rand(n_seeds, 3) - [0.5, 0.5, 0.5]
     locations = nib.affines.apply_affine(affine, locations_voxel)
-    orientations = np.random.rand(n_seeds, 3)
+    orientations = np.random.randn(n_seeds, 3)
     orientations /= np.linalg.norm(orientations, axis=1, keepdims=True)
 
     return [Seed(el, n) for el, n in zip(locations, orientations)]

@@ -11,6 +11,7 @@ class Algorithm(Enum):
 
     DETERMINISTIC = "det"
     PROBABILISTIC = "prob"
+    BOLTZMANN = "boltzmann"
 
     def __str__(self):
         return self.value
@@ -35,21 +36,28 @@ def ishtmtx(azimuths, colatitudes, n_coefficients):
     """Generates the mrtrix3 compatible inverse SH transform matrix"""
 
     matrix = np.zeros((n_coefficients, len(colatitudes)))
+    matrix_derivative = np.zeros((n_coefficients, len(colatitudes), 2))
     degree = 0
     order = 0
     for i in range(n_coefficients):
         if order < 0:
-            matrix[i] = np.sqrt(2) * np.imag(
-                scipy.special.sph_harm(-order, degree, azimuths, colatitudes)
+            m, d = scipy.special.sph_harm_y(
+                degree, -order, colatitudes, azimuths, diff_n=1
             )
+            matrix[i] = np.sqrt(2) * np.imag(m)
+            matrix_derivative[i] = np.sqrt(2) * np.imag(d)
         elif order == 0:
-            matrix[i] = np.real(
-                scipy.special.sph_harm(order, degree, azimuths, colatitudes)
+            m, d = scipy.special.sph_harm_y(
+                degree, order, colatitudes, azimuths, diff_n=1
             )
+            matrix[i] = np.real(m)
+            matrix_derivative[i] = np.real(d)
         else:
-            matrix[i] = np.sqrt(2) * np.real(
-                scipy.special.sph_harm(order, degree, azimuths, colatitudes)
+            m, d = scipy.special.sph_harm_y(
+                degree, order, colatitudes, azimuths, diff_n=1
             )
+            matrix[i] = np.sqrt(2) * np.real(m)
+            matrix_derivative[i] = np.sqrt(2) * np.real(d)
 
         if degree == order:
             degree += 2
@@ -57,10 +65,12 @@ def ishtmtx(azimuths, colatitudes, n_coefficients):
         else:
             order += 1
 
-    return matrix.T
+    return matrix.T, matrix_derivative.T
 
 
-def remove_duplicate_endpoints(streamlines: npt.ArrayLike, step_size: float) -> list(npt.NDArray):
+def remove_duplicate_endpoints(
+    streamlines: npt.ArrayLike, step_size: float
+) -> list(npt.NDArray):
     """Removes duplicate points at the end of streamlines
 
     During the tractography process, streamlines are sometimes generated with
@@ -103,3 +113,29 @@ def apply_mask(image, image_affine, mask, mask_affine):
     mask_values = mask[*mask_voxels.T].reshape(image.shape[:3])
 
     return image * mask_values[..., None]
+
+
+def fibonacci_sphere(samples=1000):
+    """
+    Generates points approximately uniformly distributed on a sphere using the
+    Fibonacci lattice method.
+
+    Args:
+        samples (int): Number of points to generate.
+
+    Returns:
+       An array of shape (samples, 3) containing the (x, y, z) coordinates of
+       points on the sphere.
+    """
+    phi = (1 + np.sqrt(5)) / 2  # Golden ratio
+    golden_angle = 2 * np.pi / phi
+
+    indices = np.arange(samples)
+    theta = golden_angle * indices  # Azimuthal angle
+    z = 1 - (2 * indices / (samples - 1))  # z-coordinates (uniformly spaced in [-1, 1])
+    radius = np.sqrt(1 - z**2)  # Compute radius for x-y plane
+
+    x = radius * np.cos(theta)
+    y = radius * np.sin(theta)
+
+    return np.vstack((x, y, z)).T  # Return as (N, 3) array
