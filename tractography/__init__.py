@@ -34,11 +34,13 @@ def tractogram(
         streamlines = algorithms.deterministic(data, affine, seeds, config)
     elif algorithm == Algorithm.PROBABILISTIC:
         streamlines = algorithms.probabilistic(data, affine, seeds, config)
+    elif algorithm == Algorithm.BOLTZMANN:
+        streamlines = algorithms.boltzmann(data, affine, seeds, config)
     else:
         raise ValueError(f"No algorithm associated with {algorithm}.")
 
     # Clean a bit.
     streamlines = core.remove_duplicate_endpoints(streamlines, config.step_size)
-    streamlines = [s for s in streamlines if len(s) != config.min_steps]
+    streamlines = [s for s in streamlines if len(s) > config.min_steps]
 
     return streamlines
