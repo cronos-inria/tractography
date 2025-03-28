@@ -2,6 +2,7 @@ import argparse
 import pkgutil
 
 import tractography as tg
+from . import utils
 
 
 DESCRIPTION = """\
