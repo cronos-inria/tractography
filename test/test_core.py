@@ -26,3 +26,26 @@ class TestRemoveDuplicateEndpoints(unittest.TestCase):
         )
         for a, b in zip(new_streamlines, streamlines):
             np.testing.assert_array_equal(a, b)
+
+
+class TestISHTMTX(unittest.TestCase):
+    def test_simple(self):
+        """Test the simplest use-case"""
+
+        azimuths, colatitudes = np.meshgrid(
+            np.linspace(0, 2 * np.pi, 100), np.linspace(0, np.pi, 50)
+        )
+        azimuths = azimuths.ravel()
+        colatitudes = colatitudes.ravel()
+        n_coefficients = 15
+        mtx, der = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
+
+        # import matplotlib.pyplot as plt
+        # coeffs, _ = tg.core.ishtmtx([np.pi/3], [np.pi/3], n_coefficients)
+        # coeffs = np.squeeze(coeffs)
+        # values = np.dot(mtx, coeffs)
+        # derv = np.dot(der, coeffs)
+        # plt.scatter(azimuths, colatitudes, c=values)
+        # plt.quiver(azimuths, colatitudes, derv[1], derv[0])
+        # plt.colorbar()
+        # plt.show()

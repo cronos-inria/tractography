@@ -163,8 +163,10 @@ def boltzmann_reference(fod, affine, seeds, config):
             delta_angles = fod_der_value / fod_value
 
             # Move forward and fix wrapping of the angles.
-            gamma = 0.05
-            angles = angles + delta_angles[::-1] * config.step_size * gamma
+            gamma = 0.1
+            delf = [np.maximum(np.sin(angles[1]), 0.01), 1]
+            angles = angles + delta_angles[::-1] / delf * config.step_size * gamma
+
             angles = tg.utils.wrap(angles[0], angles[1])
             orientation = np.array(tg.core.sph2cart(*angles, 1))
             location = location + orientation * config.step_size

@@ -18,9 +18,11 @@ void wrap(float* azimuth, float* colatitude)
 }
 
 void sph2cart(float azimuth, float colatitude, float* x, float* y, float* z) {
-	*x = sin(colatitude) * cos(azimuth);
-	*y = sin(colatitude) * sin(azimuth);
-	*z = cos(colatitude);
+	float sc, sa, ca;
+	sc = sincos(colatitude, z);
+	sa = sincos(azimuth, &ca);
+	*x = sc * ca;
+	*y = sc * sa;
 }
 
 void to_voxel(__global const float affine[4][4], float point[3], float voxel[3]) {
@@ -93,9 +95,6 @@ __kernel void tractography(
 		azimuth = 2 * PI + azimuth;
 	}
 
-	float fod_value = 0;
-	float fod_colatitude_value = 0;
-	float fod_azimuth_value = 0;
 	size_t index = 0;
 	float coefficients[$n_coefficients];
     for (size_t n = 0; n < $n_steps; n++) {
@@ -116,29 +115,27 @@ __kernel void tractography(
 
 		// Update the orientation displacement.
 		index = pick_orientation(vertices, orientation);
-		fod_value = 0.0f;
-		fod_colatitude_value = 0.0f;
-		fod_azimuth_value = 0.0f;
+		float fod_value = 0.0f;
+		float fod_colatitude_value = 0.0f;
+		float fod_azimuth_value = 0.0f;
 		for (size_t i = 0; i < $n_coefficients; i++) {
 			fod_value += coefficients[i] * matrix[index][i];
 			fod_colatitude_value += coefficients[i] * dmatrix[0][index][i];
 			fod_azimuth_value += coefficients[i] * dmatrix[1][index][i];
 		}
-
-		if (fod_value < 0.01f) {
-			fod_value = 0.01f;
-		}
+		fod_value = fmax(fod_value,  0.01f);
 
 		// Displace angles and fix wrapping of the angles.
-		float gamma = 0.05;
-		azimuth = azimuth + (fod_azimuth_value / fod_value) * step_size * gamma;	
-		colatitude = colatitude + (fod_colatitude_value / fod_value) * step_size * gamma;	
+		float gamma = 0.1f;
+		float sc = fmax(sin(colatitude), 0.01f);
+		azimuth = azimuth + fod_azimuth_value / fod_value / sc * step_size * gamma;	
+		colatitude = colatitude + fod_colatitude_value / fod_value * step_size * gamma;	
 		wrap(&azimuth, &colatitude);
 
 		// Move foward.
 		sph2cart(azimuth, colatitude, orientation, orientation + 1, orientation + 2);
-		location[0] = location[0] + (orientation[0] * step_size);
-		location[1] = location[1] + (orientation[1] * step_size);
-		location[2] = location[2] + (orientation[2] * step_size);
+		location[0] = location[0] + orientation[0] * step_size;
+		location[1] = location[1] + orientation[1] * step_size;
+		location[2] = location[2] + orientation[2] * step_size;
 	}
 }
