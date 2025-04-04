@@ -91,7 +91,7 @@ def remove_duplicate_endpoints(
 
     new_streamlines = []
     for streamline, sq in zip(streamlines, sum_squared):
-        i = np.searchsorted(sq[::-1], step_size**2 / 2)
+        i = np.searchsorted(sq[::-1], step_size**2 / 4)
         new_streamlines.append(streamline[: len(streamline) - i])
 
     return new_streamlines
