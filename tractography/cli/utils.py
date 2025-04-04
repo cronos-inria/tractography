@@ -16,12 +16,21 @@ def add_tractography_config(parser: argparse.ArgumentParser):
         type=float,
     )
 
+    # Global properties.
+    parser.add_argument(
+        "--step-size",
+        dest="step_size",
+        type=float,
+    )
+
     parser.add_argument(
         "--maximum-angle",
         dest="max_angle",
         type=float,
         help=_MAX_ANGLE,
     )
+
+    # Streamline properties.
     parser.add_argument(
         "--streamline-minimum-length",
         dest="min_length",
@@ -39,6 +48,9 @@ def set_tractography_config(config: tg.configuration.Configuration, kwargs):
 
     if kwargs["batch_size"] is not None:
         config.batch_size = kwargs["batch_size"]
+
+    if kwargs["step_size"] is not None:
+        config.step_size = kwargs["step_size"]
 
     if kwargs["max_angle"] is not None:
         config.max_angle = kwargs["max_angle"]
