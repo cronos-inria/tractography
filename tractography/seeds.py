@@ -8,6 +8,8 @@ import nimesh
 import numpy as np
 import numpy.typing as npt
 
+import tractography as tg
+
 
 @dataclass
 class Seed:
@@ -75,6 +77,46 @@ def from_mask(mask: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed
     locations = nib.affines.apply_affine(affine, locations_voxel)
     orientations = np.random.randn(n_seeds, 3)
     orientations /= np.linalg.norm(orientations, axis=1, keepdims=True)
+
+    return [Seed(el, n) for el, n in zip(locations, orientations)]
+
+
+def from_odf(odf: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
+    """Generate seeds from orientation distribution functions
+
+    The seeds are generate in voxels with non-zero average ODFs with the
+    orientations importance sampled.
+
+    Args:
+        odf: The numpy array containing the ODFs.
+        affine: The affine transform to native space.
+        n_seeds: The number of seeds to generate.
+
+    Return:
+        A list of `n_seeds` seeds suitable for tractography
+
+    """
+
+    # Get the non-zero voxels.
+    voxels = np.array(list(zip(*np.nonzero(odf[..., 0]))))
+    indices = np.random.randint(len(voxels), size=n_seeds)
+    locations_voxel = voxels[indices] + np.random.rand(n_seeds, 3) - [0.5, 0.5, 0.5]
+    locations = nib.affines.apply_affine(affine, locations_voxel)
+
+    # Preprare discretization of the ODFs.
+    vertices = tg.core.fibonacci_sphere(1000)
+    azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
+    ishtmtx, _ = tg.core.ishtmtx(azimuths, colatitudes, odf.shape[-1])
+
+    # Importance sample the ODFs based on the discretization.
+    orientations = []
+    for index in indices:
+        voxel = voxels[index]
+        local = odf[*voxel]
+        values = np.dot(ishtmtx, local)
+        cumsum = np.cumsum(np.maximum(values, np.max(values) * 0.00))
+        i = np.searchsorted(cumsum, np.random.rand() * cumsum[-1])
+        orientations.append(vertices[i])
 
     return [Seed(el, n) for el, n in zip(locations, orientations)]
 
