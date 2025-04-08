@@ -82,7 +82,8 @@ __kernel void tractography(
 		__global const float dmatrix[2][$n_directions][$n_coefficients],
         __global const float seeds[$n_streamlines][6],
         __global float streamlines[$n_streamlines][$n_steps][3],
-		float step_size)
+		float step_size,
+		float acceleration_factor)
 {
     uint gid = get_global_id(0);
 
@@ -123,13 +124,12 @@ __kernel void tractography(
 			fod_colatitude_value += coefficients[i] * dmatrix[0][index][i];
 			fod_azimuth_value += coefficients[i] * dmatrix[1][index][i];
 		}
-		fod_value = fmax(fod_value,  0.01f);
+		fod_value = fmax(fod_value,  0.001f);
 
 		// Displace angles and fix wrapping of the angles.
-		float gamma = 0.1f;
-		float sc = fmax(sin(colatitude), 0.01f);
-		azimuth = azimuth + fod_azimuth_value / fod_value / sc * step_size * gamma;	
-		colatitude = colatitude + fod_colatitude_value / fod_value * step_size * gamma;	
+		float sc = fmax(sin(colatitude), 0.001f);
+		azimuth = azimuth + fod_azimuth_value / fod_value / sc * step_size * acceleration_factor;
+		colatitude = colatitude + fod_colatitude_value / fod_value * step_size * acceleration_factor;
 		wrap(&azimuth, &colatitude);
 
 		// Move foward.

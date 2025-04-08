@@ -10,7 +10,12 @@ step_size = 0.25 # in seconds
 # The maximum angle between steps.
 max_angle = 45 # in degrees
 
-
 [streamline]
 length.minimum = 10.0  # in mm
 length.maximum = 400.0 # in mm
+
+[algorithms]
+
+[algorithms.boltzmann]
+step_size = 0.1 # in seconds
+acceleration_factor = 0.1

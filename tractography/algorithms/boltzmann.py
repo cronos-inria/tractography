@@ -95,6 +95,7 @@ def boltzmann(fod, affine, seeds, config):
         seeds_buffer,
         streamlines_buffer,
         np.float32(config.step_size),
+        np.float32(config.algorithms.boltzmann.acceleration_factor),
     )
     program.tractography(_queue, (n_streamlines,), None, *args)
     cl.enqueue_copy(_queue, streamlines, streamlines_buffer)

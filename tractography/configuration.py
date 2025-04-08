@@ -5,7 +5,7 @@ import numpy as np
 import pydantic
 
 
-_DEFAULT_CONFIG_FILER = Path(__file__).parents[1] / "config.toml"
+_DEFAULT_CONFIG_FILE = Path(__file__).parents[1] / "config.toml"
 
 
 class Length(pydantic.BaseModel):
@@ -17,11 +17,23 @@ class Streamline(pydantic.BaseModel):
     length: Length
 
 
+class Algorithm(pydantic.BaseModel): ...
+
+
+class Boltzmann(Algorithm):
+    acceleration_factor: pydantic.PositiveFloat
+
+
+class Algorithms(pydantic.BaseModel):
+    boltzmann: Boltzmann
+
+
 class Configuration(pydantic.BaseModel):
     batch_size: pydantic.PositiveInt
     step_size: pydantic.PositiveFloat
     max_angle: pydantic.PositiveInt
     streamline: Streamline
+    algorithms: Algorithms
 
     @property
     def n_steps(self) -> int:
@@ -34,7 +46,7 @@ class Configuration(pydantic.BaseModel):
 
 def load():
     """Load the configuration from a file"""
-    with open(_DEFAULT_CONFIG_FILER, "rb") as f:
+    with open(_DEFAULT_CONFIG_FILE, "rb") as f:
         config = tomllib.load(f)
 
     return Configuration.model_validate(config)
