@@ -30,6 +30,9 @@ def tractogram(
 
     """
 
+    # Normalize the ODFs.
+    data = utils.normalize_odf(data)
+
     if algorithm == Algorithm.DETERMINISTIC:
         streamlines = algorithms.deterministic(data, affine, seeds, config)
     elif algorithm == Algorithm.PROBABILISTIC:

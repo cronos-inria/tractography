@@ -3,6 +3,22 @@ import numpy as np
 from numpy.typing import NDArray
 
 
+def normalize_odf(odf: NDArray):
+    """Normalize a field of ODFs to have unit integral
+
+    The ODFs are assumed to be represented using real spherical
+    harmonics.
+
+    Args:
+        odf: The ODFs coefficients at every voxel.
+
+    Returns:
+        The normalized ODFs.
+    """
+
+    return odf / (odf[..., :1] * np.sqrt(4 * np.pi))
+
+
 def to_voxel(inv_affine: NDArray, location: NDArray) -> NDArray:
     """Change from world space to coordinate space
 
