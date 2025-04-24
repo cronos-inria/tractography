@@ -82,7 +82,7 @@ def _sample_icosphere(fod, n_upsampling=2):
 
     vertices = trimesh.creation.icosphere(n_upsampling).vertices
     azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
-    matrix = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
+    matrix, _ = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
 
     # Convert the spherical harmonics to 1D probability mass functions.
     fod_values = np.maximum(np.dot(fod.reshape((-1, n_coefficients)), matrix.T), 0)
