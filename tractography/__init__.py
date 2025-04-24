@@ -7,11 +7,11 @@ def tractogram(
     affine,
     seeds: list[seeds.Seed],
     algorithm: Algorithm,
-    config: configuration.Configuration,
+    config: configuration.Configuration | None = None,
 ):
     """Generate a tractogram from dMRI data
 
-    The tractogram, which is simply a list of streamlines, is generate
+    The tractogram, which is simply a list of streamlines, is generated
     using the specified algorithm.
 
     Args:
@@ -29,6 +29,9 @@ def tractogram(
         The generated tractogram, i.e. a list of streamlines.
 
     """
+
+    if config is None:
+        config = configuration.load()
 
     # Normalize the ODFs if needed.
     if algorithm != Algorithm.FACT:
