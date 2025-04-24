@@ -12,6 +12,7 @@ class Algorithm(Enum):
     DETERMINISTIC = "det"
     PROBABILISTIC = "prob"
     BOLTZMANN = "boltzmann"
+    FACT = "fact"
 
     def __str__(self):
         return self.value

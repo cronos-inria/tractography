@@ -24,8 +24,13 @@ class Boltzmann(Algorithm):
     acceleration_factor: pydantic.PositiveFloat
 
 
+class FACT(Algorithm):
+    maximum_angle: pydantic.PositiveFloat
+
+
 class Algorithms(pydantic.BaseModel):
     boltzmann: Boltzmann
+    fact: FACT
 
 
 class Configuration(pydantic.BaseModel):

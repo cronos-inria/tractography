@@ -30,8 +30,9 @@ def tractogram(
 
     """
 
-    # Normalize the ODFs.
-    data = utils.normalize_odf(data)
+    # Normalize the ODFs if needed.
+    if algorithm != Algorithm.FACT:
+        data = utils.normalize_odf(data)
 
     if algorithm == Algorithm.DETERMINISTIC:
         streamlines = algorithms.deterministic(data, affine, seeds, config)
@@ -39,6 +40,8 @@ def tractogram(
         streamlines = algorithms.probabilistic(data, affine, seeds, config)
     elif algorithm == Algorithm.BOLTZMANN:
         streamlines = algorithms.boltzmann(data, affine, seeds, config)
+    elif algorithm == Algorithm.FACT:
+        streamlines = algorithms.fact(data, affine, seeds, config)
     else:
         raise ValueError(f"No algorithm associated with {algorithm}.")
 
