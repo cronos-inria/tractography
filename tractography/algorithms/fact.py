@@ -15,6 +15,7 @@ _device = _context.devices[0]
 _nb_units = _device.max_compute_units
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
+_OPENCL_INCLUDE = f"-I {_OPENCL_DIR / 'include'}"
 
 
 def opencl(peaks, affine, seeds, config):
@@ -44,7 +45,7 @@ def opencl(peaks, affine, seeds, config):
     # Also augment the seeds array to two float4 per seed.
     n_streamlines = len(seeds)
     seeds_array = tg.seeds.to_array(seeds).astype(np.float32)
-    fill = np.zeros(n_streamlines, dtype=np.float32)
+    fill = np.ones(n_streamlines, dtype=np.float32)
     seeds_array = np.c_[seeds_array[:, :3], fill, seeds_array[:, 3:], fill]
     seeds_buffer = cl.Buffer(_context, flags, size=seeds_array.nbytes)
     cl.enqueue_copy(_queue, seeds_buffer, np.ascontiguousarray(seeds_array))
@@ -69,7 +70,7 @@ def opencl(peaks, affine, seeds, config):
         "n_streamlines": n_streamlines,
     }
     source = template.safe_substitute(values)
-    program = cl.Program(_context, source).build()
+    program = cl.Program(_context, source).build(_OPENCL_INCLUDE)
 
     # Track streamlines.
     args = (

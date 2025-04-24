@@ -1,25 +1,13 @@
-bool in_image(int3 voxel) {
-	return !(voxel.x < 0 || voxel.x >= $nx || voxel.y < 0 || voxel.y >= $ny || voxel.z < 0 || voxel.z >= $nz);
-}
+#include "core.cl"
 
-int3 to_voxel(__global const float affine[4][4], float4 point) {
-	int3 voxel;
-    for (size_t i = 0; i < 3; i++) {
-        voxel[i] = affine[i][0] * point.x +
-                   affine[i][1] * point.y +
-                   affine[i][2] * point.z +
-                   affine[i][3];
-    }
-	return voxel;
-}
-
-float4 pick_orientation(__global const float4 peaks[$nx][$ny][$nz][$n_peaks], float4 orientation, int3 voxel, float cos_angle) {
+float4 pick_orientation(__global const float4 peaks[$nx][$ny][$nz][$n_peaks], float4 orientation, float3 voxel, float cos_angle) {
 
 	// Pick the new orientation which is most colinear with the previous orientation.
 	float4 best_orientation = 0;
 	float current_max = -1;
+	uint3 index = to_index(voxel);
 	for (size_t i = 0; i < $n_peaks; i++) {
-		float4 peak = peaks[voxel[0]][voxel[1]][voxel[2]][i];
+		float4 peak = peaks[index.x][index.y][index.z][i];
 		float cs = dot(peak, orientation);
 	    if (fabs(cs) > current_max && fabs(cs) > cos_angle) {
 			current_max = fabs(cs);
@@ -47,13 +35,16 @@ void duplicate_points(
 
 __kernel void tractography(
         __global const float4 peaks[$nx][$ny][$nz][$n_peaks],
-        __global const float affine[4][4],
+        __global const float4 affine[4],
         __global const float4 seeds[$n_streamlines][2],
         float dt,
         float cos_angle,
         __global float4 streamlines[$n_streamlines][$n_steps])
 {
     uint gid = get_global_id(0);
+
+	// Copy the affine to local memory.
+	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
 
     // Initialize the first streamline point and orientation with the seed.
 	float4 point = seeds[gid][0];
@@ -63,10 +54,10 @@ __kernel void tractography(
     for (size_t n = 1; n < $n_steps; n++ ) {
 
         // Go back to voxel space.
-        int3 voxel = to_voxel(affine, point);
+        float3 voxel = to_voxel(iaffine, point);
 
 		// Check if we are in the image, stop if not.
-		if (!in_image(voxel)) {
+		if (!in_image(voxel, $nx, $ny, $nz)) {
 			duplicate_points(streamlines, n, gid);
             break;
 		}
