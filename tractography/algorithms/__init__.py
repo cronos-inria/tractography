@@ -1,3 +1,4 @@
 from .boltzmann import boltzmann
-from .fact import opencl as fact
+from .fact import FACT
+from .probabilistic import Probabilistic
 from .opencl import deterministic, probabilistic

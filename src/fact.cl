@@ -22,24 +22,14 @@ float4 pick_orientation(__global const float4 peaks[$nx][$ny][$nz][$n_peaks], fl
 	return best_orientation;
 }
 
-void duplicate_points(
-		__global float4 streamlines[$n_streamlines][$n_steps],
-		size_t n,
-		uint gid) {
-
-	float4 point = streamlines[gid][n-1];
-	for (size_t i = n; i < $n_steps; i++) {
-		streamlines[gid][i] = point;
-	}
-}
-
 __kernel void tractography(
         __global const float4 peaks[$nx][$ny][$nz][$n_peaks],
         __global const float4 affine[4],
         __global const float4 seeds[$n_streamlines][2],
         float dt,
         float cos_angle,
-        __global float4 streamlines[$n_streamlines][$n_steps])
+        __global float4 streamlines[$n_streamlines][$n_steps],
+        __global uint lengths[$n_streamlines])
 {
     uint gid = get_global_id(0);
 
@@ -51,14 +41,14 @@ __kernel void tractography(
     float4 orientation = seeds[gid][1];
 
     streamlines[gid][0] = point;
-    for (size_t n = 1; n < $n_steps; n++ ) {
+	size_t n;
+    for (n = 1; n < $n_steps; n++ ) {
 
         // Go back to voxel space.
         float3 voxel = to_voxel(iaffine, point);
 
 		// Check if we are in the image, stop if not.
 		if (!in_image(voxel, $nx, $ny, $nz)) {
-			duplicate_points(streamlines, n, gid);
             break;
 		}
 
@@ -67,7 +57,6 @@ __kernel void tractography(
 
         // If the orientation is 0, there is nowhere to go.
         if (length(orientation) < 0.5) {
-			duplicate_points(streamlines, n, gid);
             break;
         }
 
@@ -75,4 +64,5 @@ __kernel void tractography(
 		point += dt * orientation;
         streamlines[gid][n] = point;
     }
+	lengths[gid] = n;
 }

@@ -1,96 +1,93 @@
-void to_voxel(__global const float affine[4][4], float point[3], uint voxel[3]) {
-    for (size_t i = 0; i < 3; i++) {
-        voxel[i] = affine[i][0] * point[0] +
-                   affine[i][1] * point[1] +
-                   affine[i][2] * point[2] +
-                   affine[i][3];
-    }
-}
+#include "core.cl"
 
-size_t pick_direction(__global const float fod[$nx][$ny][$nz][$n_directions], uint valid[$n_directions], uint voxel[3], float rand) {
+float4 pick_orientation(
+		__global const float fod[$nx][$ny][$nz][$n_directions],
+		__global const float4 vertices[$n_directions],
+		float4 orientation,
+		float3 voxel,
+		float rand,
+		float max_angle)
+{
+
+	uint3 index = to_index(voxel);
+
+	// Find the valid orientations.
+	uint valid[$n_directions];
+	for (size_t i = 0; i < $n_directions; i++) {
+		if (dot(vertices[i], orientation) > max_angle) {
+			valid[i] = 1;
+		}
+		else {
+			valid[i] = 0;
+		}
+	}
+
+	// To pick, we need the sum as a normalization factor.
+	float sum = 0;
+	for (size_t i = 0; i < $n_directions; i++) {
+		if (valid[i] == 1) { 
+			sum += fod[index.x][index.y][index.z][i];
+		}
+	}
 
 	// Pick a random direction according to the shape of the FOD.
 	float cs = 0;
-	size_t j;
 	for (size_t i = 0; i < $n_directions; i++) {
 	    if (valid[i] == 1) {
-	        cs += fod[voxel[0]][voxel[1]][voxel[2]][i];
-	        if (cs > rand) {
-		    j = i;
-		    break;
+	        cs += fod[index.x][index.y][index.z][i];
+	        if (cs > rand * sum) {
+				return vertices[i];
 	        }
 	    }
 	}
 
-	return j;
+	return 0;
 }
 
 __kernel void tractography(
         __global const float fod[$nx][$ny][$nz][$n_directions],
-        __global const float affine[4][4],
-        __global const float vertices[$n_directions][3],
-        __global const float seeds[$n_streamlines][6],
+        __global const float4 affine[4],
+        __global const float4 vertices[$n_directions],
+        __global const float4 seeds[$n_streamlines][2],
         float dt,
         float max_angle,
         __global const float randoms[$n_streamlines][$n_steps],
-        __global float streamline[$n_streamlines][$n_steps][3])
+        __global float4 streamlines[$n_streamlines][$n_steps],
+        __global uint lengths[$n_streamlines])
 {
     uint gid = get_global_id(0);
 
-    // Initialize the first streamline point with the seed.
-    streamline[gid][0][0] = seeds[gid][0];
-    streamline[gid][0][1] = seeds[gid][1];
-    streamline[gid][0][2] = seeds[gid][2];
+	// Copy the affine to local memory.
+	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
 
-    float orientation[3] = {seeds[gid][3], seeds[gid][4], seeds[gid][5]};
+    // Initialize the first streamline point and orientation with the seed.
+	float4 point = seeds[gid][0];
+    float4 orientation = seeds[gid][1];
 
-    for (size_t n = 1; n < $n_steps; n++ ) {
-
-	// Get the current point.
-        float point[3] = {streamline[gid][n-1][0], streamline[gid][n-1][1], streamline[gid][n-1][2]};
+    streamlines[gid][0] = point;
+	size_t n;
+    for (n = 1; n < $n_steps; n++ ) {
 
         // Go back to voxel space.
-        uint voxel[3];
-        to_voxel(affine, point, voxel);
+        float3 voxel = to_voxel(iaffine, point);
 
-        // Find the valid orientations.
-        uint valid[$n_directions];
-        for (size_t i = 0; i < $n_directions; i++) {
-            if ((vertices[i][0] * orientation[0] + vertices[i][1] * orientation[1] + vertices[i][2] * orientation[2]) > max_angle) {
-                valid[i] = 1;
-            }
-            else {
-                valid[i] = 0;
-            }
+		// Check if we are in the image, stop if not.
+		if (!in_image(voxel, $nx, $ny, $nz)) {
+			break;
+		}
+
+		// Pick the next direction.	
+		float rand = randoms[gid][n - 1];
+		orientation = pick_orientation(fod, vertices, orientation, voxel, rand, max_angle);
+
+        // If the orientation is 0, there is nowhere to go.
+        if (length(orientation) < 0.5) {
+            break;
         }
 
-        // To pick, we need the sum as a normalization factor.
-        float sum = 0;
-        for (size_t i = 0; i < $n_directions; i++) {
-	    if (valid[i] == 1) 
-                sum += fod[voxel[0]][voxel[1]][voxel[2]][i];
-        }
-
-        // If the normalization factor is 0, there is nowhere to go. Stay
-        // on the same point.
-        if (sum == 0.0) {
-            streamline[gid][n][0] = streamline[gid][n-1][0];
-            streamline[gid][n][1] = streamline[gid][n-1][1];
-            streamline[gid][n][2] = streamline[gid][n-1][2];
-            continue;
-        }
-
-	// Pick the next direction.	
-	float rand = randoms[gid][n - 1] * sum;
-	size_t j = pick_direction(fod, valid, voxel, rand);
-
-        // Add the point to the streamline.
-        streamline[gid][n][0] = streamline[gid][n-1][0] + dt * vertices[j][0];
-        streamline[gid][n][1] = streamline[gid][n-1][1] + dt * vertices[j][1];
-        streamline[gid][n][2] = streamline[gid][n-1][2] + dt * vertices[j][2];
-
-        orientation[0] = vertices[j][0];
-        orientation[1] = vertices[j][1];
-        orientation[2] = vertices[j][2];
+        // Move the point forwared and add it to the streamline.
+		point += dt * orientation;
+        streamlines[gid][n] = point;
     }
+	lengths[gid] = n;
 }

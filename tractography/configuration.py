@@ -20,6 +20,10 @@ class Streamline(pydantic.BaseModel):
 class Algorithm(pydantic.BaseModel): ...
 
 
+class Probabilistic(Algorithm):
+    maximum_angle: pydantic.PositiveFloat
+
+
 class Boltzmann(Algorithm):
     acceleration_factor: pydantic.PositiveFloat
 
@@ -31,6 +35,7 @@ class FACT(Algorithm):
 class Algorithms(pydantic.BaseModel):
     boltzmann: Boltzmann
     fact: FACT
+    probabilistic: Probabilistic
 
 
 class Configuration(pydantic.BaseModel):

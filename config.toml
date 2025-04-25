@@ -21,3 +21,6 @@ acceleration_factor = 0.1
 
 [algorithms.fact]
 maximum_angle = 60 # in degrees
+
+[algorithms.probabilistic]
+maximum_angle = 60 # in degrees
