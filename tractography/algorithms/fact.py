@@ -1,26 +1,37 @@
-from pathlib import Path
-from string import Template
-
 import numpy as np
-import pyopencl as cl
 
 import tractography as tg
-
-# Create the global OpenCL context.
-_context = cl.create_some_context(interactive=False)
-_queue = cl.CommandQueue(_context)
-
-# Get the number of compute units for the selected device.
-_device = _context.devices[0]
-_nb_units = _device.max_compute_units
-
-_OPENCL_DIR = Path(__file__).parents[2] / "src"
-_OPENCL_INCLUDE = f"-I {_OPENCL_DIR / 'include'}"
+from . import opencl as cl
 
 
 class FACT:
+    """OpenCL-accelerated implementation of the FACT algorithm
+
+    The FACT (Fiber Assignment by Continuous Tracking) algorithm
+    deterministically traces white matter pathways by propagating streamlines
+    along the most colinear fiber orientation (peak direction) at each voxel.
+    This implementation leverages GPU acceleration using OpenCL for efficient,
+    large-scale tractography.
+
+    """
 
     def __init__(self, peaks, affine, n_streamlines, config):
+        """Initializes the FACT algorithm with tracking data and parameters
+
+        Prepares OpenCL buffers for peaks, seed points, output streamlines,
+        and tracking parameters. Normalizes input peak vectors, reshapes them
+        for OpenCL compatibility, and allocates memory for results on the device.
+
+        Args:
+            peaks: 4D array of peak directions with shape (X, Y, Z, N*3),
+                where N is the number of peaks per voxel.
+            affine: 4x4 affine matrix mapping voxel indices to world coordinates.
+            n_streamlines: Number of streamlines to generate when running the
+                algorithm.
+            config: Configuration object containing tracking parameters (e.g.,
+                step size, number of steps).
+
+        """
 
         self._config = config
         self._n_streamlines = n_streamlines
@@ -33,39 +44,28 @@ class FACT:
         peaks = np.divide(peaks, norms, where=norms != 0)
 
         # Precompute the inverse affine.
-        iaffine = np.linalg.inv(affine)
-
-        # Send readonly data to the device.
-        flags = cl.mem_flags.READ_ONLY
-
-        iaffine = iaffine.astype(np.float32)
-        self._iaffine = cl.Buffer(_context, flags, size=iaffine.nbytes)
-        cl.enqueue_copy(_queue, self._iaffine, np.ascontiguousarray(iaffine))
+        iaffine = np.linalg.inv(affine).astype(np.float32)
+        self._iaffine = cl.new_read_only_buffer(iaffine)
 
         # Augment the vectors to 4 elements because OpenCL only has float4.
-        peaks = np.pad(peaks.astype(np.float32), ((0, 0),) * 4 + ((0, 1),))
-        self._peaks = cl.Buffer(_context, flags, size=peaks.nbytes)
-        cl.enqueue_copy(_queue, self._peaks, np.ascontiguousarray(peaks))
+        peaks = np.pad(peaks, ((0, 0),) * 4 + ((0, 1),)).astype(np.float32)
+        self._peaks = cl.new_read_only_buffer(peaks)
 
         # Also augment the seeds array to two float4 per seed.
         seeds_array = np.ones((n_streamlines, 8), dtype=np.float32)
-        self._seeds = cl.Buffer(_context, flags, size=seeds_array.nbytes)
-        cl.enqueue_copy(_queue, self._seeds, np.ascontiguousarray(seeds_array))
+        self._seeds = cl.new_read_only_buffer(seeds_array)
 
-        # Reserve space for the streamlines on the device. Streamlines are also float4.
-        streamlines = np.zeros((n_streamlines, config.n_steps, 4), dtype=np.float32)
-        flags = cl.mem_flags.WRITE_ONLY
-        self._streamlines = cl.Buffer(_context, flags, size=streamlines.nbytes)
+        # Reserve space for the streamlines on the device.
+        # Streamlines are also float4.
+        streamlines_nbytes = n_streamlines * config.n_steps * 4 * 4
+        self._streamlines = cl.new_write_only_buffer(streamlines_nbytes)
 
         # Reserve space for the length of the streamlines on the device.
-        lengths = np.zeros((n_streamlines,), dtype=np.uint32)
-        flags = cl.mem_flags.WRITE_ONLY
-        self._lengths = cl.Buffer(_context, flags, size=lengths.nbytes)
+        self._lengths = cl.new_write_only_buffer(n_streamlines * 4)
 
-        # Compile the OpenCL program that implements Boltzmann tractography.
-        with open(_OPENCL_DIR / "fact.cl") as f:
-            kernel = f.read()
-        template = Template(kernel)
+        # Fill columns for seeds.
+        self._zeros = np.zeros(self._n_streamlines, dtype=np.float32)
+        self._ones = np.ones(self._n_streamlines, dtype=np.float32)
 
         # Set constants in the OpenCL code.
         values = {
@@ -76,34 +76,44 @@ class FACT:
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
-        source = template.safe_substitute(values)
-        self._program = cl.Program(_context, source).build(_OPENCL_INCLUDE)
+        self._program = cl.build_program(values, "fact.cl")
 
     def run(self, seeds):
+        """Run the FACT algorithm on the given seed points
+
+        Args:
+            seeds: List of seed points in world coordinates with associated
+                direction vectors.
+
+        Returns:
+            A list of streamlines, each represented as a 2D array of 3D
+                coordinates (N x 3), where N is the number of steps
+                successfully tracked for that streamline.
+
+        """
 
         # Transfer the seeds to the buffer.
-        seeds_array = tg.seeds.to_array(seeds).astype(np.float32)
-        fillo = np.ones(self._n_streamlines, dtype=np.float32)
-        fillz = np.zeros(self._n_streamlines, dtype=np.float32)
-        seeds_array = np.c_[seeds_array[:, :3], fillo, seeds_array[:, 3:], fillz]
-        cl.enqueue_copy(_queue, self._seeds, np.ascontiguousarray(seeds_array))
+        array = tg.seeds.to_array(seeds).astype(np.float32)
+        array = np.c_[array[:, :3], self._ones, array[:, 3:], self._zeros]
+        cl.copy_to_buffer(self._seeds, array)
 
         # Track streamlines.
+        max_angle = self._config.algorithms.fact.maximum_angle
         args = (
             self._peaks,
             self._iaffine,
             self._seeds,
             np.float32(self._config.step_size),
-            np.float32(np.cos(np.deg2rad(self._config.algorithms.fact.maximum_angle))),
+            np.float32(np.cos(np.deg2rad(max_angle))),
             self._streamlines,
             self._lengths,
         )
-        self._program.tractography(_queue, (self._n_streamlines,), None, *args)
+        cl.run_program(self._program, args, self._n_streamlines)
         streamlines = np.zeros(
             (self._n_streamlines, self._config.n_steps, 4), dtype=np.float32
         )
-        cl.enqueue_copy(_queue, streamlines, self._streamlines)
+        cl.copy_from_buffer(self._streamlines, streamlines)
         lengths = np.zeros((self._n_streamlines,), dtype=np.uint32)
-        cl.enqueue_copy(_queue, lengths, self._lengths)
+        cl.copy_from_buffer(self._lengths, lengths)
 
         return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]

@@ -17,6 +17,7 @@ _device = _context.devices[0]
 _nb_units = _device.max_compute_units
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
+_OPENCL_INCLUDE = f"-I {_OPENCL_DIR / 'include'}"
 
 
 def _opencl_algorithm(name, fod_sampling, prepare_args):
@@ -97,6 +98,41 @@ def _read_buffer(data):
     buffer = cl.Buffer(_context, flags, size=data.nbytes)
     cl.enqueue_copy(_queue, buffer, np.ascontiguousarray(data))
     return buffer
+
+
+def new_read_only_buffer(data):
+    """Create a new read only OpenCL buffer from data"""
+    buffer = cl.Buffer(_context, cl.mem_flags.READ_ONLY, size=data.nbytes)
+    cl.enqueue_copy(_queue, buffer, np.ascontiguousarray(data))
+    return buffer
+
+
+def build_program(values, name):
+
+    # Compile the OpenCL program that implements Boltzmann tractography.
+    with open(_OPENCL_DIR / name) as f:
+        kernel = f.read()
+    template = Template(kernel)
+
+    # Set constants in the OpenCL code.
+    source = template.safe_substitute(values)
+    return cl.Program(_context, source).build(_OPENCL_INCLUDE)
+
+
+def new_write_only_buffer(size):
+    return cl.Buffer(_context, cl.mem_flags.WRITE_ONLY, size=size)
+
+
+def copy_to_buffer(buffer, data):
+    cl.enqueue_copy(_queue, buffer, np.ascontiguousarray(data))
+
+
+def copy_from_buffer(buffer, data):
+    cl.enqueue_copy(_queue, data, buffer)
+
+
+def run_program(program, args, n_threads):
+    program.tractography(_queue, (n_threads,), None, *args)
 
 
 def _update_buffer(data, buffer):
