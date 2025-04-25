@@ -16,7 +16,7 @@ def normalize_odf(odf: NDArray):
         The normalized ODFs.
     """
 
-    return odf / (odf[..., :1] * np.sqrt(4 * np.pi))
+    return np.divide(odf / np.sqrt(4 * np.pi), odf[..., :1], where=odf[..., :1] != 0)
 
 
 def to_voxel(inv_affine: NDArray, location: NDArray) -> NDArray:
