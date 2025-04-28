@@ -1,26 +1,37 @@
-from pathlib import Path
-from string import Template
-
 import numpy as np
-import pyopencl as cl
 
 import tractography as tg
-
-# Create the global OpenCL context.
-_context = cl.create_some_context(interactive=False)
-_queue = cl.CommandQueue(_context)
-
-# Get the number of compute units for the selected device.
-_device = _context.devices[0]
-_nb_units = _device.max_compute_units
-
-_OPENCL_DIR = Path(__file__).parents[2] / "src"
-_OPENCL_INCLUDE = f"-I {_OPENCL_DIR / 'include'}"
+from . import opencl as cl
 
 
 class Probabilistic:
+    """OpenCL implementation of probabilistic tractography
 
-    def __init__(self, fod, affine, n_streamlines, config):
+    This class implements a local probabilistic tractography algorithm. The
+    streamlines are propagated step-by-step by choosing a random orientation
+    from the discritized ODFs.
+
+    """
+
+    def __init__(self, odf, affine, n_streamlines, config):
+        """Initializes the algorithm with tracking data and parameters
+
+        Prepares OpenCL buffers for ODFs, seed points, output streamlines,
+        and tracking parameters. Discitizes the ODFs, reshapes them
+        for OpenCL compatibility, and allocates memory for results on the
+        device.
+
+        Args:
+            odf: 4D array representing fiber orientation distributions at each
+                    voxel, in spherical harmonics format.
+            affine: 4x4 affine matrix mapping voxel indices to world
+                coordinates.
+            n_streamlines: Number of streamlines to generate when running the
+                algorithm (equal to the number of seeds).
+            config: Configuration object containing tracking parameters (e.g.,
+                step size, number of steps).
+
+        """
 
         self._n_streamlines = n_streamlines
         self._config = config
@@ -30,103 +41,89 @@ class Probabilistic:
         n_points = 400
         vertices = tg.core.fibonacci_sphere(n_points)
         device_vertices = np.c_[vertices, np.zeros((n_points,))]
-        cl_vertices = _read_buffer(device_vertices.astype(np.float32))
+        self._vertices = cl.new_read_only_buffer(device_vertices.astype(np.float32))
 
         # Precompute the inverse affine.
-        iaffine = np.linalg.inv(affine)
-        cl_iaffine = _read_buffer(iaffine.astype(np.float32))
+        iaffine = np.linalg.inv(affine).astype(np.float32)
+        self._iaffine = cl.new_read_only_buffer(iaffine)
 
         # Convert the spherical harmonics to 1D probability mass functions.
-        n_coefficients = fod.shape[-1]
+        n_coefficients = odf.shape[-1]
         azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
         matrix, _ = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
-        fod_values = np.maximum(np.dot(fod.reshape((-1, n_coefficients)), matrix.T), 0)
-        fod_values = fod_values.reshape((*fod.shape[:3], -1))
-        cl_fod_values = _read_buffer(fod_values.astype(np.float32))
+        odf_values = np.maximum(np.dot(odf.reshape((-1, n_coefficients)), matrix.T), 0)
+        odf_values = odf_values.reshape((*odf.shape[:3], -1))
+        self._values = cl.new_read_only_buffer(odf_values.astype(np.float32))
 
         # Create the seed buffer on the device. They are stored as two float4.
         seeds_array = np.empty((n_streamlines, 8), dtype=np.float32)
-        cl_seeds = _read_buffer(seeds_array)
+        self._seeds = cl.new_read_only_buffer(seeds_array)
 
         # Pregenerate the random values.
-        randoms = np.random.rand(n_streamlines, config.n_steps).astype(dtype=np.float32)
-        cl_randoms = _read_buffer(randoms)
+        randoms = np.random.rand(n_streamlines, config.n_steps)
+        self._randoms = cl.new_read_only_buffer(randoms.astype(np.float32))
 
         # Reserve space for the streamlines on the device. The are
         # stored as float4.
-        streamlines = np.zeros((n_streamlines, config.n_steps, 4), dtype=np.float32)
-        flags = cl.mem_flags.WRITE_ONLY
-        cl_streamlines = cl.Buffer(_context, flags, size=streamlines.nbytes)
+        streamlines_nbytes = n_streamlines * config.n_steps * 4 * 4
+        self._streamlines = cl.new_write_only_buffer(streamlines_nbytes)
 
         # Reserve space for the length of the streamlines on the device.
-        lengths = np.zeros((n_streamlines,), dtype=np.uint32)
-        flags = cl.mem_flags.WRITE_ONLY
-        cl_lengths = cl.Buffer(_context, flags, size=lengths.nbytes)
+        self._lengths = cl.new_write_only_buffer(n_streamlines * 4)
+
+        # Fill columns for seeds.
+        self._zeros = np.zeros(self._n_streamlines, dtype=np.float32)
+        self._ones = np.ones(self._n_streamlines, dtype=np.float32)
 
         # Build the OpenCL program that implements tractography.
-        with open(_OPENCL_DIR / "probabilistic.cl") as f:
-            kernel = f.read()
-        template = Template(kernel)
-
-        # Set constants in the OpenCL code.
         values = {
-            "nx": fod.shape[0],
-            "ny": fod.shape[1],
-            "nz": fod.shape[2],
+            "nx": odf.shape[0],
+            "ny": odf.shape[1],
+            "nz": odf.shape[2],
             "n_directions": len(vertices),
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
-        source = template.safe_substitute(values)
-        program = cl.Program(_context, source).build(_OPENCL_INCLUDE)
-
-        # Keep what is needed to run the algorithm.
-        self._values = cl_fod_values
-        self._iaffine = cl_iaffine
-        self._vertices = cl_vertices
-        self._seeds = cl_seeds
-        self._randoms = cl_randoms
-        self._streamlines = cl_streamlines
-        self._lengths = cl_lengths
-        self._program = program
+        self._program = cl.build_program(values, "probabilistic.cl")
 
     def run(self, seeds):
+        """Run the probabilistic algorithm on the given seed points
+
+        Args:
+            seeds: List of seed points in world coordinates with associated
+                direction vectors.
+
+        Returns:
+            A list of streamlines, each represented as a 2D array of 3D
+                coordinates (N x 3), where N is the number of steps
+                successfully tracked for that streamline.
+
+        """
 
         # Transfer the seeds to the buffer.
-        seeds_array = tg.seeds.to_array(seeds).astype(np.float32)
-        fillo = np.ones(self._n_streamlines, dtype=np.float32)
-        fillz = np.zeros(self._n_streamlines, dtype=np.float32)
-        seeds_array = np.c_[seeds_array[:, :3], fillo, seeds_array[:, 3:], fillz]
-        cl.enqueue_copy(_queue, self._seeds, np.ascontiguousarray(seeds_array))
+        array = tg.seeds.to_array(seeds).astype(np.float32)
+        array = np.c_[array[:, :3], self._ones, array[:, 3:], self._zeros]
+        cl.copy_to_buffer(self._seeds, array)
 
         # Track streamlines.
+        max_angle = self._config.algorithms.probabilistic.maximum_angle
         args = (
             self._values,
             self._iaffine,
             self._vertices,
             self._seeds,
             np.float32(self._config.step_size),
-            np.float32(
-                np.cos(np.deg2rad(self._config.algorithms.probabilistic.maximum_angle))
-            ),
+            np.float32(np.cos(np.deg2rad(max_angle))),
             self._randoms,
             self._streamlines,
             self._lengths,
         )
-        self._program.tractography(_queue, (self._n_streamlines,), None, *args)
+        cl.run_program(self._program, args, self._n_streamlines)
         streamlines = np.zeros(
             (self._n_streamlines, self._config.n_steps, 4), dtype=np.float32
         )
-        cl.enqueue_copy(_queue, streamlines, self._streamlines)
+        cl.copy_from_buffer(self._streamlines, streamlines)
         lengths = np.zeros((self._n_streamlines,), dtype=np.uint32)
-        cl.enqueue_copy(_queue, lengths, self._lengths)
+        cl.copy_from_buffer(self._lengths, lengths)
 
         return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
-
-
-def _read_buffer(data):
-    """Create a new read only OpenCL buffer from data"""
-    flags = cl.mem_flags.READ_ONLY
-    buffer = cl.Buffer(_context, flags, size=data.nbytes)
-    cl.enqueue_copy(_queue, buffer, np.ascontiguousarray(data))
-    return buffer
