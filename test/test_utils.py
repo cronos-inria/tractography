@@ -16,6 +16,15 @@ class TestNormalizeODF(unittest.TestCase):
             normalized[..., 0] * np.sqrt(4 * np.pi), np.ones((3, 3, 3))
         )
 
+    def test_renormalize(self):
+
+        # Normalizing many times should have no effect.
+        coeffs = np.random.rand(3, 3, 3, 45)
+        coeffs[0, 0, 0] = 0
+        normalized = tg.utils.normalize_odf(coeffs)
+        again = tg.utils.normalize_odf(normalized)
+        np.testing.assert_array_almost_equal(normalized, again)
+
 
 class TestWrap(unittest.TestCase):
     """Test angle wrapping"""
