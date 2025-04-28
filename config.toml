@@ -19,6 +19,9 @@ length.maximum = 400.0 # in mm
 [algorithms.boltzmann]
 acceleration_factor = 0.1
 
+[algorithms.deterministic]
+maximum_angle = 30 # in degrees
+
 [algorithms.fact]
 maximum_angle = 60 # in degrees
 
