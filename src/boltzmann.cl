@@ -1,5 +1,5 @@
+#include "core.cl"
 #define PI 3.14159265359f
-
 
 float modulus(float a, float b)
 {
@@ -17,36 +17,21 @@ void wrap(float* azimuth, float* colatitude)
 	*azimuth = modulus(*azimuth, 2.0f * PI);
 }
 
-void sph2cart(float azimuth, float colatitude, float* x, float* y, float* z) {
-	float sc, sa, ca;
-	sc = sincos(colatitude, z);
+float4 sph2cart(float azimuth, float colatitude) {
+	float sc, sa, ca, cc;
+	sc = sincos(colatitude, &cc);
 	sa = sincos(azimuth, &ca);
-	*x = sc * ca;
-	*y = sc * sa;
-}
-
-void to_voxel(__global const float affine[4][4], float point[3], float voxel[3]) {
-    for (size_t i = 0; i < 3; i++) {
-        voxel[i] = affine[i][0] * point[0] +
-                   affine[i][1] * point[1] +
-                   affine[i][2] * point[2] +
-                   affine[i][3];
-    }
-}
-
-
-float norm(float v[3]) {
-	return sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+	return (float4) (sc * ca, sc * sa, cc, 0);	
 }
 
 size_t pick_orientation(
-		__global const float vertices[$n_directions][3],
-		float orientation[3])
+		__global const float4 vertices[$n_directions],
+		float4 orientation)
 {
 	float best_angle = -2;
 	size_t best_index = -1;
 	for (size_t i = 0; i < $n_directions; i++) {
-		float angle = vertices[i][0] * orientation[0] + vertices[i][1] * orientation[1] + vertices[i][2] * orientation[2];
+		float angle = dot(vertices[i], orientation);
 		if (angle > best_angle) {
 			best_angle = angle;
 			best_index = i;
@@ -58,17 +43,18 @@ size_t pick_orientation(
 
 void sample_fod(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],
-		float voxel[3],
+		float3 voxel,
 		float coefficients[$n_coefficients])
 {
-	if (voxel[0] < 0 || voxel[0] > $nx - 1 || voxel[1] < 0 || voxel[1] > $ny - 1 || voxel[2] < 0 || voxel[2] > $nz - 1) {
+	if (!in_image(voxel, $nx, $ny, $nz)) {
 		for (size_t i = 0; i < $n_coefficients; i++) {
 			coefficients[i] = 0;
 		}
 	}
 	else {
+		uint3 index = to_index(voxel);
 		for (size_t i = 0; i < $n_coefficients; i++) {
-			coefficients[i] = fod[(int) round(voxel[0])][(int) round(voxel[1])][(int) round(voxel[2])][i];
+			coefficients[i] = fod[index.x][index.y][index.z][i];
 		}
 	}
 
@@ -76,46 +62,46 @@ void sample_fod(
 
 __kernel void tractography(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],
-        __global const float affine[4][4],
-        __global const float vertices[$n_directions][3],
+        __global const float4 global_iaffine[4],
+        __global const float4 vertices[$n_directions],
 		__global const float matrix[$n_directions][$n_coefficients],
 		__global const float dmatrix[2][$n_directions][$n_coefficients],
-        __global const float seeds[$n_streamlines][6],
-        __global float streamlines[$n_streamlines][$n_steps][3],
+        __global const float4 seeds[$n_streamlines][2],
+        __global float4 streamlines[$n_streamlines][$n_steps],
+		__global uint lengths[$n_streamlines],
 		float step_size,
 		float acceleration_factor)
 {
     uint gid = get_global_id(0);
 
+	// Copy the affine to local memory.
+	float4 iaffine[4] = {global_iaffine[0], global_iaffine[1], global_iaffine[2], global_iaffine[3]};
+
     // Initialize the first streamline point with the seed.
-	float location[3] = {seeds[gid][0], seeds[gid][1], seeds[gid][2]};
-    float orientation[3] = {seeds[gid][3], seeds[gid][4], seeds[gid][5]};
-	float colatitude = acos(orientation[2]);
-	float azimuth = atan2(orientation[1], orientation[0]);
+	float4 location = seeds[gid][0];
+    float4 orientation = seeds[gid][1];
+	float colatitude = acos(orientation.z);
+	float azimuth = atan2(orientation.y, orientation.x);
 	if (azimuth < 0) {
 		azimuth = 2 * PI + azimuth;
 	}
 
-	size_t index = 0;
 	float coefficients[$n_coefficients];
-    for (size_t n = 0; n < $n_steps; n++) {
-
-		streamlines[gid][n][0] = location[0];
-		streamlines[gid][n][1] = location[1];
-		streamlines[gid][n][2] = location[2];
+    streamlines[gid][0] = location;
+	size_t n;
+    for (n = 1; n < $n_steps; n++) {
 
         // Go back to voxel space.
-        float voxel[3];
-        to_voxel(affine, location, voxel);
+        float3 voxel = to_voxel(iaffine, location);
 
 		// Check if we still have an FOD.
 		sample_fod(fod, voxel, coefficients);
         if (coefficients[0] <= 0.0f) {
-            continue;
+			break;
         }
 
 		// Update the orientation displacement.
-		index = pick_orientation(vertices, orientation);
+		size_t index = pick_orientation(vertices, orientation);
 		float fod_value = 0.0f;
 		float fod_colatitude_value = 0.0f;
 		float fod_azimuth_value = 0.0f;
@@ -128,14 +114,14 @@ __kernel void tractography(
 
 		// Displace angles and fix wrapping of the angles.
 		float sc = fmax(sin(colatitude), 0.001f);
-		azimuth = azimuth + fod_azimuth_value / fod_value / sc * step_size * acceleration_factor;
-		colatitude = colatitude + fod_colatitude_value / fod_value * step_size * acceleration_factor;
+		azimuth += fod_azimuth_value / fod_value / sc * step_size * acceleration_factor;
+		colatitude += fod_colatitude_value / fod_value * step_size * acceleration_factor;
 		wrap(&azimuth, &colatitude);
 
 		// Move foward.
-		sph2cart(azimuth, colatitude, orientation, orientation + 1, orientation + 2);
-		location[0] = location[0] + orientation[0] * step_size;
-		location[1] = location[1] + orientation[1] * step_size;
-		location[2] = location[2] + orientation[2] * step_size;
+		orientation = sph2cart(azimuth, colatitude);
+		location += orientation * step_size;
+		streamlines[gid][n] = location;
 	}
+	lengths[gid] = n;
 }

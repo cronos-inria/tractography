@@ -1,175 +1,90 @@
-from pathlib import Path
-from string import Template
-
 import numpy as np
-import scipy.interpolate as si
 
 import tractography as tg
-
-import pyopencl as cl
-
-# Create the global OpenCL context.
-_context = cl.create_some_context(interactive=False)
-_queue = cl.CommandQueue(_context)
-
-# Get the number of compute units for the selected device.
-_device = _context.devices[0]
-_nb_units = _device.max_compute_units
-
-_OPENCL_DIR = Path(__file__).parents[2] / "src"
+from . import opencl as cl
 
 
-def boltzmann(fod, affine, seeds, config):
+class Boltzmann:
 
-    n_points = 1000
+    def __init__(self, odf, affine, n_streamlines, config):
 
-    # Generate a set of orientation where the FODs are evaluated.
-    vertices = tg.core.fibonacci_sphere(n_points)
-    azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
+        self._n_streamlines = n_streamlines
+        self._config = config
 
-    # Generate the spherical harmonic matrix and its derivative for
-    # the selected orientations.
-    n_coefficients = fod.shape[-1]
-    matrix, dmatrix = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
+        # Generate a set of orientation where the FODs are evaluated.
+        n_points = 1000
+        vertices = tg.core.fibonacci_sphere(n_points)
+        device_vertices = np.c_[vertices, np.zeros((n_points,))]
+        self._vertices = cl.new_read_only_buffer(device_vertices.astype(np.float32))
 
-    # Precompute the inverse affine.
-    iaffine = np.linalg.inv(affine)
+        # Precompute the inverse affine.
+        iaffine = np.linalg.inv(affine).astype(np.float32)
+        self._iaffine = cl.new_read_only_buffer(iaffine)
 
-    # Send readonly data to the device.
-    flags = cl.mem_flags.READ_ONLY
-    vertices = vertices.astype(np.float32)
-    vertex_buffer = cl.Buffer(_context, flags, size=vertices.nbytes)
-    cl.enqueue_copy(_queue, vertex_buffer, np.ascontiguousarray(vertices))
+        # Generate the spherical harmonic matrix and its derivative for
+        # the selected orientations.
+        n_coefficients = odf.shape[-1]
+        azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
+        matrix, dmatrix = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
+        self._matrix = cl.new_read_only_buffer(matrix.astype(np.float32))
+        self._dmatrix = cl.new_read_only_buffer(dmatrix.astype(np.float32))
 
-    matrix = matrix.astype(np.float32)
-    matrix_buffer = cl.Buffer(_context, flags, size=matrix.nbytes)
-    cl.enqueue_copy(_queue, matrix_buffer, np.ascontiguousarray(matrix))
+        self._odf = cl.new_read_only_buffer(odf.astype(np.float32))
 
-    dmatrix = dmatrix.astype(np.float32)
-    dmatrix_buffer = cl.Buffer(_context, flags, size=dmatrix.nbytes)
-    cl.enqueue_copy(_queue, dmatrix_buffer, np.ascontiguousarray(dmatrix))
+        # Create the seed buffer on the device. They are stored as two float4.
+        seeds_array = np.empty((n_streamlines, 8), dtype=np.float32)
+        self._seeds = cl.new_read_only_buffer(seeds_array)
 
-    iaffine = iaffine.astype(np.float32)
-    affine_buffer = cl.Buffer(_context, flags, size=iaffine.nbytes)
-    cl.enqueue_copy(_queue, affine_buffer, np.ascontiguousarray(iaffine))
+        # Reserve space for the streamlines on the device. The are
+        # stored as float4.
+        streamlines_nbytes = n_streamlines * config.n_steps * 4 * 4
+        self._streamlines = cl.new_write_only_buffer(streamlines_nbytes)
 
-    fod = fod.astype(np.float32)
-    fod_buffer = cl.Buffer(_context, flags, size=fod.nbytes)
-    cl.enqueue_copy(_queue, fod_buffer, np.ascontiguousarray(fod))
+        # Reserve space for the length of the streamlines on the device.
+        self._lengths = cl.new_write_only_buffer(n_streamlines * 4)
 
-    seeds_array = tg.seeds.to_array(seeds).astype(np.float32)
-    seeds_buffer = cl.Buffer(_context, flags, size=seeds_array.nbytes)
-    cl.enqueue_copy(_queue, seeds_buffer, np.ascontiguousarray(seeds_array))
+        # Fill columns for seeds.
+        self._zeros = np.zeros(self._n_streamlines, dtype=np.float32)
+        self._ones = np.ones(self._n_streamlines, dtype=np.float32)
 
-    # Reserve space for the streamlines on the device.
-    n_streamlines = len(seeds)
-    streamlines = np.zeros((n_streamlines, config.n_steps, 3), dtype=np.float32)
-    flags = cl.mem_flags.WRITE_ONLY
-    streamlines_buffer = cl.Buffer(_context, flags, size=streamlines.nbytes)
+        # Set constants in the OpenCL code.
+        values = {
+            "nx": odf.shape[0],
+            "ny": odf.shape[1],
+            "nz": odf.shape[2],
+            "n_directions": len(vertices),
+            "n_coefficients": n_coefficients,
+            "n_steps": config.n_steps,
+            "n_streamlines": n_streamlines,
+        }
+        self._program = cl.build_program(values, "boltzmann.cl")
 
-    # Compile the OpenCL program that implements Boltzmann tractography.
-    with open(_OPENCL_DIR / "boltzmann.cl") as f:
-        kernel = f.read()
-    template = Template(kernel)
+    def run(self, seeds):
 
-    # Set constants in the OpenCL code.
-    values = {
-        "nx": fod.shape[0],
-        "ny": fod.shape[1],
-        "nz": fod.shape[2],
-        "n_directions": len(vertices),
-        "n_coefficients": n_coefficients,
-        "n_steps": config.n_steps,
-        "n_streamlines": n_streamlines,
-    }
-    source = template.safe_substitute(values)
-    program = cl.Program(_context, source).build()
+        # Transfer the seeds to the buffer.
+        array = tg.seeds.to_array(seeds).astype(np.float32)
+        array = np.c_[array[:, :3], self._ones, array[:, 3:], self._zeros]
+        cl.copy_to_buffer(self._seeds, array)
 
-    # Track streamlines.
-    args = (
-        fod_buffer,
-        affine_buffer,
-        vertex_buffer,
-        matrix_buffer,
-        dmatrix_buffer,
-        seeds_buffer,
-        streamlines_buffer,
-        np.float32(config.step_size),
-        np.float32(config.algorithms.boltzmann.acceleration_factor),
-    )
-    program.tractography(_queue, (n_streamlines,), None, *args)
-    cl.enqueue_copy(_queue, streamlines, streamlines_buffer)
+        # Track streamlines.
+        args = (
+            self._odf,
+            self._iaffine,
+            self._vertices,
+            self._matrix,
+            self._dmatrix,
+            self._seeds,
+            self._streamlines,
+            self._lengths,
+            np.float32(self._config.step_size),
+            np.float32(self._config.algorithms.boltzmann.acceleration_factor),
+        )
+        cl.run_program(self._program, args, self._n_streamlines)
+        streamlines = np.zeros(
+            (self._n_streamlines, self._config.n_steps, 4), dtype=np.float32
+        )
+        cl.copy_from_buffer(self._streamlines, streamlines)
+        lengths = np.zeros((self._n_streamlines,), dtype=np.uint32)
+        cl.copy_from_buffer(self._lengths, lengths)
 
-    return streamlines
-
-
-def boltzmann_reference(fod, affine, seeds, config):
-    """The reference algorithm for Boltzmann tractography"""
-
-    n_points = 1000
-
-    # Generate a set of orientation where the FODs are evaluated.
-    vertices = tg.core.fibonacci_sphere(n_points)
-    azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
-
-    # Generate the spherical harmonic matrix and its derivative for
-    # the selected orientations.
-    n_coefficients = fod.shape[-1]
-    matrix, matrix_der = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
-
-    # Interpolate the FODs.
-    x = np.arange(fod.shape[0])
-    y = np.arange(fod.shape[1])
-    z = np.arange(fod.shape[2])
-    fod = si.RegularGridInterpolator(
-        (x, y, z), fod, method="nearest", bounds_error=False, fill_value=0
-    )
-
-    # Precompute the inverse affine.
-    iaffine = np.linalg.inv(affine)
-
-    streamlines = []
-    fod_value = 0
-    fod_der_value = [0, 0]
-    index = 0
-    coefficients = [0]
-    for seed in seeds:
-
-        # Initialize the first point of the streamline from the seed.
-        location = seed.location
-        orientation = np.array([seed.orientation])
-        *angles, _ = tg.core.cart2sph(*orientation.T)
-        angles = np.array(angles).squeeze()
-
-        streamline = np.zeros((config.n_steps, 3))
-        streamlines.append(streamline)
-        for i, points in enumerate(streamline):
-
-            # Go back to voxel space.
-            voxel = tg.utils.to_voxel(iaffine, location)
-
-            # Check if we still have an FOD.
-            if fod(voxel)[0][0] <= 0:
-                streamline[i:] = location[None, :]
-                break
-
-            # Record the new location to the output array.
-            points[:] = location
-
-            # Update the orientation displacement.
-            coefficients = fod(voxel)[0]
-            index = np.argmax(np.dot(vertices, orientation.T))
-            fod_value = np.maximum(np.dot(matrix[index], coefficients), 0.01)
-            fod_der_value = np.dot(matrix_der[:, index], coefficients)
-            delta_angles = fod_der_value / fod_value
-
-            # Move forward and fix wrapping of the angles.
-            gamma = 0.1
-            delf = [np.maximum(np.sin(angles[1]), 0.01), 1]
-            angles = angles + delta_angles[::-1] / delf * config.step_size * gamma
-
-            angles = tg.utils.wrap(angles[0], angles[1])
-            orientation = np.array(tg.core.sph2cart(*angles, 1))
-            location = location + orientation * config.step_size
-
-    return streamlines
+        return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
