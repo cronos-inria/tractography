@@ -105,6 +105,10 @@ class Probabilistic:
         array = np.c_[array[:, :3], self._ones, array[:, 3:], self._zeros]
         cl.copy_to_buffer(self._seeds, array)
 
+        # Regenerate the random values.
+        randoms = np.random.rand(self._n_streamlines, self._config.n_steps)
+        cl.copy_to_buffer(self._randoms, randoms.astype(np.float32))
+
         # Track streamlines.
         max_angle = self._config.algorithms.probabilistic.maximum_angle
         args = (
