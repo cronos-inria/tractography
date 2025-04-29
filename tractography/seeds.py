@@ -43,9 +43,10 @@ def from_surface(surface: nimesh.Mesh, n_seeds: int) -> list[Seed]:
     # inside that triangle.
     vertices, triangles = surface.vertices, surface.triangles
     indices = np.random.randint(len(triangles), size=n_seeds)
-    barycentric = [_random_barycentric_coordinates() for _ in range(n_seeds)]
-    triangle_vertices = [vertices[triangles[i]] for i in indices]
-    locations = [np.dot(b, v) for v, b in zip(triangle_vertices, barycentric)]
+    barycentric = _random_barycentric_coordinates(n_seeds)
+    triangle_indices = triangles[indices]
+    triangle_vertices = vertices[triangle_indices]
+    locations = np.sum(triangle_vertices * barycentric[..., None], axis=1)
 
     # The orientations of the seeds are just triangle normals.
     normals = _triangle_normals(vertices, triangles)
@@ -140,14 +141,17 @@ def load(filename: Path) -> list[Seed]:
 
 def _triangle_normals(vs, ts):
     """Compute the normal of triangles"""
-    ns = [np.cross(vs[t[1]] - vs[t[0]], vs[t[2]] - vs[t[0]]) for t in ts]
-    return np.array([n / w if (w := np.linalg.norm(n)) != 0 else n for n in ns])
+    t = vs[ts]
+    ns = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0], axis=1)
+    norms = np.linalg.norm(ns, axis=1)
+    ns[norms != 0] /= norms[norms != 0, None]
+    return ns
 
 
-def _random_barycentric_coordinates():
-    """Generate a random point in a triangle"""
-    a, b = np.random.rand(2)
-    if a + b > 1:
-        a = 1 - a
-        b = 1 - b
-    return 1 - a - b, a, b
+def _random_barycentric_coordinates(n):
+    """Generate n random points in a triangle"""
+    a, b = np.random.rand(2, n)
+    to_update = a + b > 1
+    a[to_update] = 1 - a[to_update]
+    b[to_update] = 1 - b[to_update]
+    return np.c_[1 - a - b, a, b]
