@@ -38,7 +38,7 @@ class Probabilistic:
 
         # Generate a set of orientation where the FODs are evaluated. On the
         # device the vertices are represented as float4.
-        n_points = 400
+        n_points = 300
         vertices = tg.core.fibonacci_sphere(n_points)
         device_vertices = np.c_[vertices, np.zeros((n_points,))]
         self._vertices = cl.new_read_only_buffer(device_vertices.astype(np.float32))
@@ -59,21 +59,43 @@ class Probabilistic:
         seeds_array = np.empty((n_streamlines, 8), dtype=np.float32)
         self._seeds = cl.new_read_only_buffer(seeds_array)
 
-        # Pregenerate the random values.
-        randoms = np.random.rand(n_streamlines, config.n_steps)
-        self._randoms = cl.new_read_only_buffer(randoms.astype(np.float32))
-
         # Reserve space for the streamlines on the device. The are
         # stored as float4.
         streamlines_nbytes = n_streamlines * config.n_steps * 4 * 4
-        self._streamlines = cl.new_write_only_buffer(streamlines_nbytes)
-
-        # Reserve space for the length of the streamlines on the device.
-        self._lengths = cl.new_write_only_buffer(n_streamlines * 4)
 
         # Fill columns for seeds.
         self._zeros = np.zeros(self._n_streamlines, dtype=np.float32)
         self._ones = np.ones(self._n_streamlines, dtype=np.float32)
+
+        # Preallocate the output.
+        buffer = cl.cl.Buffer(
+            cl._context,
+            cl.cl.mem_flags.READ_WRITE | cl.cl.mem_flags.ALLOC_HOST_PTR,
+            size=streamlines_nbytes,
+        )
+        self._output, event = cl.cl.enqueue_map_buffer(
+            cl._queue,
+            buffer,
+            cl.cl.map_flags.READ,
+            0,
+            shape=(n_streamlines, config.n_steps, 4),
+            dtype=np.float32,
+        )
+        self._streamlines = buffer
+        buffer = cl.cl.Buffer(
+            cl._context,
+            cl.cl.mem_flags.READ_WRITE | cl.cl.mem_flags.ALLOC_HOST_PTR,
+            size=n_streamlines * 4,
+        )
+        self._output_lengths, event = cl.cl.enqueue_map_buffer(
+            cl._queue,
+            buffer,
+            cl.cl.map_flags.READ,
+            0,
+            shape=(n_streamlines,),
+            dtype=np.uint32,
+        )
+        self._lengths = buffer
 
         # Build the OpenCL program that implements tractography.
         values = {
@@ -100,14 +122,12 @@ class Probabilistic:
 
         """
 
+        events = []
+
         # Transfer the seeds to the buffer.
         array = tg.seeds.to_array(seeds).astype(np.float32)
         array = np.c_[array[:, :3], self._ones, array[:, 3:], self._zeros]
-        cl.copy_to_buffer(self._seeds, array)
-
-        # Regenerate the random values.
-        randoms = np.random.rand(self._n_streamlines, self._config.n_steps)
-        cl.copy_to_buffer(self._randoms, randoms.astype(np.float32))
+        events.append(cl.copy_to_buffer(self._seeds, array))
 
         # Track streamlines.
         max_angle = self._config.algorithms.probabilistic.maximum_angle
@@ -118,16 +138,12 @@ class Probabilistic:
             self._seeds,
             np.float32(self._config.step_size),
             np.float32(np.cos(np.deg2rad(max_angle))),
-            self._randoms,
             self._streamlines,
             self._lengths,
         )
-        cl.run_program(self._program, args, self._n_streamlines)
-        streamlines = np.zeros(
-            (self._n_streamlines, self._config.n_steps, 4), dtype=np.float32
-        )
-        cl.copy_from_buffer(self._streamlines, streamlines)
-        lengths = np.zeros((self._n_streamlines,), dtype=np.uint32)
-        cl.copy_from_buffer(self._lengths, lengths)
+        events.append(cl.run_program(self._program, args, self._n_streamlines))
+        events.append(cl.copy_from_buffer(self._lengths, self._output_lengths))
+        events.append(cl.copy_from_buffer(self._streamlines, self._output))
+        cl.cl.wait_for_events(events)
 
-        return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
+        return [self._output[i, :n, :3] for i, n in enumerate(self._output_lengths)]

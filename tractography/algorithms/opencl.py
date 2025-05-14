@@ -4,7 +4,6 @@ from string import Template
 import numpy as np
 import pyopencl as cl
 
-
 # Create the global OpenCL context.
 _context = cl.create_some_context(interactive=False)
 _queue = cl.CommandQueue(_context)
@@ -20,7 +19,7 @@ _OPENCL_INCLUDE = f"-I {_OPENCL_DIR / 'include'}"
 def new_read_only_buffer(data):
     """Create a new read only OpenCL buffer from data"""
     buffer = cl.Buffer(_context, cl.mem_flags.READ_ONLY, size=data.nbytes)
-    cl.enqueue_copy(_queue, buffer, np.ascontiguousarray(data))
+    cl.enqueue_copy(_queue, buffer, np.ascontiguousarray(data), is_blocking=False)
     return buffer
 
 
@@ -41,12 +40,14 @@ def new_write_only_buffer(size):
 
 
 def copy_to_buffer(buffer, data):
-    cl.enqueue_copy(_queue, buffer, np.ascontiguousarray(data))
+    return cl.enqueue_copy(
+        _queue, buffer, np.ascontiguousarray(data), is_blocking=False
+    )
 
 
 def copy_from_buffer(buffer, data):
-    cl.enqueue_copy(_queue, data, buffer)
+    return cl.enqueue_copy(_queue, data, buffer, is_blocking=False)
 
 
 def run_program(program, args, n_threads):
-    program.tractography(_queue, (n_threads,), None, *args)
+    return program.tractography(_queue, (n_threads,), None, *args)
