@@ -1,28 +1,4 @@
 #include "core.cl"
-#define PI 3.14159265359f
-
-float modulus(float a, float b)
-{
-	return a - b * floor(a / b);
-}
-
-void wrap(float* azimuth, float* colatitude)
-{
-
-	*colatitude = modulus(*colatitude, 2.0f * PI);
-	if (*colatitude >= PI) {
-		*colatitude = PI - modulus(*colatitude, PI);
-		*azimuth = *azimuth + PI;
-	}
-	*azimuth = modulus(*azimuth, 2.0f * PI);
-}
-
-float4 sph2cart(float azimuth, float colatitude) {
-	float sc, sa, ca, cc;
-	sc = sincos(colatitude, &cc);
-	sa = sincos(azimuth, &ca);
-	return (float4) (sc * ca, sc * sa, cc, 0);	
-}
 
 size_t pick_orientation(
 		__global const float4 vertices[$n_directions],
