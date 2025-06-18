@@ -54,6 +54,16 @@ __kernel void test_sph2cart(
 	}
 }
 
+__kernel void test_cart2sph(
+	__global const float4* cart,
+	int n_values,
+	__global float2* sph)
+{
+	for (size_t i = 0; i < n_values; i++) {
+		sph[i] = cart2sph(cart[i]);
+	}
+}
+
 __kernel void test_sample_fod(
 	__global const float fod[3][4][5][6],
 	__global const float voxel[3],

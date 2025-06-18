@@ -20,6 +20,13 @@ inline float4 sph2cart(float azimuth, float colatitude) {
 	return (float4) (sc * ca, sc * sa, cc, 0);
 }
 
+inline float2 cart2sph(float4 cart) {
+	float azimuth = atan2(cart.y, cart.x);
+	float colatitude = acos(cart.z);
+	wrap(&azimuth, &colatitude);
+    return (float2) (azimuth, colatitude);
+}
+
 inline float3 to_voxel(float4 affine[4], float4 point) {
 	float3 voxel;
     for (size_t i = 0; i < 3; i++) {

@@ -16,6 +16,43 @@ _DATA_DIR = Path(__file__).parents[1] / "data"
 class TestCore(unittest.TestCase):
     """Test the OpenCL implementation of core functions"""
 
+    def test_cart2sph(self):
+        """Test the cart2sph function"""
+
+        azimuths = np.linspace(0, 2 * np.pi - 2 * np.pi / 1000, 1000).astype(np.float32)
+        colatitudes = np.linspace(0, np.pi - np.pi / 1000, 1000).astype(np.float32)
+        ex, ey, ez = zip(
+            *[tg.core.sph2cart(a, c, 1) for a, c in zip(azimuths, colatitudes)]
+        )
+        cart = np.c_[ex, ey, ez, np.zeros_like(ex)].astype(np.float32)
+        sph = np.c_[azimuths, colatitudes].astype(np.float32)
+
+        # Create the global OpenCL context.
+        _context = tg.algorithms.opencl._context
+        _queue = tg.algorithms.opencl._queue
+
+        flags = cl.mem_flags.READ_ONLY
+        cart_buffer = cl.Buffer(_context, flags, size=cart.nbytes)
+        cl.enqueue_copy(_queue, cart_buffer, cart)
+
+        flags = cl.mem_flags.WRITE_ONLY
+        sph_buffer = cl.Buffer(_context, flags, size=sph.nbytes)
+
+        # Compile the OpenCL program that implements Boltzmann tractography.
+        program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
+
+        program.test_cart2sph(
+            _queue,
+            (1,),
+            None,
+            cart_buffer,
+            np.int32(len(cart)),
+            sph_buffer,
+        )
+        new_sph = np.zeros_like(sph)
+        cl.enqueue_copy(_queue, new_sph, sph_buffer)
+        np.testing.assert_array_almost_equal(new_sph, sph, 3)
+
     def test_randu(self):
         """Test the randu function"""
 
