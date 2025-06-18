@@ -62,3 +62,23 @@ __kernel void test_sample_fod(
 	float v[3] = {voxel[0], voxel[1], voxel[2]};
 	sample_fod(fod, v, coefficients);
 }
+
+__kernel void test_randu(
+	__global float *values,
+	uint n_values)
+{
+	uint2 state = {1, 0};
+	for (size_t i = 0; i < n_values; i++) {
+		values[i] = randu(&state);
+	}
+}
+
+__kernel void test_randn(
+	__global float *values,
+	uint n_values)
+{
+	uint2 state = {1, 0};
+	for (size_t i = 0; i < n_values; i++) {
+		values[i] = randn(&state);
+	}
+}

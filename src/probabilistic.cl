@@ -29,18 +29,6 @@ float4 pick_orientation(
 	return (float4) 0;
 }
 
-uint MWC64X(uint2 *state)
-{
-    enum {A=4294883355U};
-    uint x=(*state).x, c=(*state).y;  // Unpack the state
-    uint res=x^c;                     // Calculate the result
-    uint hi=mul_hi(x,A);              // Step the RNG
-    x=x*A+c;
-    c=hi+(x<c);
-    *state=(uint2)(x,c);              // Pack the state back up
-    return res;                       // Return the next result
-}
-
 __kernel void tractography(
         __global const float fod[$nx][$ny][$nz][$n_directions],
         __global const float4 affine[4],
@@ -79,7 +67,7 @@ __kernel void tractography(
 		}
 
 		// Pick the next direction.	
-		float rand = (float) MWC64X(&state) / 4294967295.0f;
+		float rand = randu(&state);
 		orientation = pick_orientation(fod, nvertices, orientation, voxel, rand, max_angle);
 
 		// If the orientation is 0, there is nowhere to go.

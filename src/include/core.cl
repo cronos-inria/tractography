@@ -36,3 +36,23 @@ inline uint3 to_index(float3 voxel) {
 	uint3 index = {(uint) rint(voxel.x), (uint) rint(voxel.y), (uint) rint(voxel.z)};
 	return index;
 }
+
+inline uint MWC64X(uint2 *state)
+{
+    enum {A=4294883355U};
+    uint x=(*state).x, c=(*state).y;  // Unpack the state
+    uint res=x^c;                     // Calculate the result
+    uint hi=mul_hi(x,A);              // Step the RNG
+    x=x*A+c;
+    c=hi+(x<c);
+    *state=(uint2)(x,c);              // Pack the state back up
+    return res;                       // Return the next result
+}
+
+inline float randu(uint2 *state) {
+	return (float) MWC64X(state) / 4294967295.0f;
+}
+
+inline float randn(uint2 *state) {
+	return sqrt(-2.0f * log(randu(state))) * cos(2 * PI * randu(state)); 
+}
