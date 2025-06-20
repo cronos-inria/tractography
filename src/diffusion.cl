@@ -75,8 +75,9 @@ __kernel void tractography(
 
 	float coefficients[$n_coefficients];
 	streamlines[gid][0] = point;
-	size_t n;
-	for (n = 1; n < $n_steps; n++ ) {
+	size_t n = 1;
+	float time = 0;
+	while (n < $n_steps) {
 
 		// Go back to voxel space.
 		float3 voxel = to_voxel(iaffine, point);
@@ -116,6 +117,8 @@ __kernel void tractography(
         float4 noise = randn(state) * et + randn(state) * ep;
 
 		float4 tangent = (gamma * dt) * drift + sqrt(gamma * dt) * noise;
+
+		// If the velocity is too large, scale the time step.
 		float scaling = 1.0f;
 		if (length(tangent) > 0.017f) {
 			scaling = 0.017f / length(tangent);
@@ -124,7 +127,15 @@ __kernel void tractography(
 
 		// Move the point forwared and add it to the streamline.
 		point += dt * scaling * orientation;
-		streamlines[gid][n] = point;
+		
+		// Move time forward and record point if necessary.
+		time += dt * scaling;
+		if (time > dt) {
+			time -= dt;
+			streamlines[gid][n] = point - time * orientation;
+			n++;
+		}
+
 	}
 	lengths[gid] = n;
 }
