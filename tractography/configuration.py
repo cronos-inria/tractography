@@ -36,11 +36,16 @@ class FACT(Algorithm):
     maximum_angle: pydantic.PositiveFloat
 
 
+class Diffusion(Algorithm):
+    inverse_curvature: pydantic.PositiveFloat
+
+
 class Algorithms(pydantic.BaseModel):
     boltzmann: Boltzmann
     deterministic: Deterministic
     fact: FACT
     probabilistic: Probabilistic
+    diffusion: Diffusion
 
 
 class Configuration(pydantic.BaseModel):

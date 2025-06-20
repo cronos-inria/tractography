@@ -27,3 +27,6 @@ maximum_angle = 60 # in degrees
 
 [algorithms.probabilistic]
 maximum_angle = 30 # in degrees
+
+[algorithms.diffusion]
+inverse_curvature = 1.0
