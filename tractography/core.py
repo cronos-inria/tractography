@@ -13,6 +13,7 @@ class Algorithm(Enum):
     PROBABILISTIC = "prob"
     BOLTZMANN = "boltzmann"
     FACT = "fact"
+    DIFFUSION = "diffusion"
 
     def __str__(self):
         return self.value

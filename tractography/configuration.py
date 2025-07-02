@@ -37,6 +37,8 @@ class FACT(Algorithm):
 
 
 class Diffusion(Algorithm):
+    step_size: pydantic.PositiveFloat
+    save_at: pydantic.PositiveFloat
     inverse_curvature: pydantic.PositiveFloat
 
 

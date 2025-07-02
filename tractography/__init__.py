@@ -49,6 +49,9 @@ def tractogram(
     elif algorithm == Algorithm.FACT:
         fact = algorithms.FACT(data, affine, len(seeds), config)
         streamlines = fact.run(seeds)
+    elif algorithm == Algorithm.DIFFUSION:
+        fact = algorithms.Diffusion(data, affine, len(seeds), config)
+        streamlines = fact.run(seeds)
     else:
         raise ValueError(f"No algorithm associated with {algorithm}.")
 

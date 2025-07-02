@@ -45,6 +45,17 @@ float4 exps2(float4 p, float4 x, float t) {
     return c * p + x * (s / n);
 }
 
+
+float softmax(float x, float k) {
+	if (x * k < 30.0f)
+		return log(1 + exp(k * x)) / k;
+	return x;
+}
+
+float dsoftmax(float x, float k) {
+	return 1.0f / (1 + exp(-k * x));
+}
+
 __kernel void tractography(
         __global const float fod[$nx][$ny][$nz][$n_directions],
         __global const float4 affine[4],
@@ -54,6 +65,7 @@ __kernel void tractography(
         __global const float4 seeds[$n_streamlines][2],
         __global uint2 randoms[$n_streamlines],
         float dt,
+		float save_at,
 		float gamma,
         __global float4 streamlines[$n_streamlines][$n_steps],
         __global uint lengths[$n_streamlines])
@@ -103,7 +115,10 @@ __kernel void tractography(
 			fod_colatitude_value += coefficients[i] * dmatrix[0][index][i];
 			fod_azimuth_value += coefficients[i] * dmatrix[1][index][i];
 		}
-		fod_value = fmax(fod_value,  0.001f);
+		fod_value = softmax(fod_value, 100.0f);
+		float d = dsoftmax(fod_value, 100.0f);
+		fod_colatitude_value *= d;
+		fod_azimuth_value *= d;
 
 		float2 angles = cart2sph(orientation);
 		float st, ct, sp, cp;
@@ -117,21 +132,15 @@ __kernel void tractography(
         float4 noise = randn(state) * et + randn(state) * ep;
 
 		float4 tangent = (gamma * dt) * drift + sqrt(gamma * dt) * noise;
-
-		// If the velocity is too large, scale the time step.
-		float scaling = 1.0f;
-		if (length(tangent) > 0.017f) {
-			scaling = 0.017f / length(tangent);
-		}
-		orientation = exps2(orientation, tangent, scaling);
+		orientation = exps2(orientation, tangent, 1.0f);
 
 		// Move the point forwared and add it to the streamline.
-		point += dt * scaling * orientation;
+		point += dt * orientation;
 		
 		// Move time forward and record point if necessary.
-		time += dt * scaling;
-		if (time > dt) {
-			time -= dt;
+		time += dt;
+		if (time >= save_at) {
+			time -= save_at;
 			streamlines[gid][n] = point - time * orientation;
 			n++;
 		}

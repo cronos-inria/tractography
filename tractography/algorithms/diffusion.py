@@ -12,7 +12,7 @@ class Diffusion:
         self._config = config
 
         # Generate a set of orientation where the FODs are evaluated.
-        n_points = 1000
+        n_points = 10000
         vertices = tg.core.fibonacci_sphere(n_points)
         device_vertices = np.c_[vertices, np.zeros((n_points,))]
         self._vertices = cl.new_read_only_buffer(device_vertices.astype(np.float32))
@@ -79,7 +79,8 @@ class Diffusion:
             self._dmatrix,
             self._seeds,
             self._randoms,
-            np.float32(self._config.step_size),
+            np.float32(self._config.algorithms.diffusion.step_size),
+            np.float32(self._config.algorithms.diffusion.save_at),
             np.float32(self._config.algorithms.diffusion.inverse_curvature),
             self._streamlines,
             self._lengths,
