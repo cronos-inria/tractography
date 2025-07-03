@@ -11,28 +11,22 @@ class Diffusion:
         self._n_streamlines = n_streamlines
         self._config = config
 
-        # Generate a set of orientation where the FODs are evaluated.
-        n_points = 10000
-        vertices = tg.core.fibonacci_sphere(n_points)
-        device_vertices = np.c_[vertices, np.zeros((n_points,))]
-        self._vertices = cl.new_read_only_buffer(device_vertices.astype(np.float32))
-
         # Precompute the inverse affine.
         iaffine = np.linalg.inv(affine).astype(np.float32)
         self._iaffine = cl.new_read_only_buffer(iaffine)
 
-        # Generate the spherical harmonic matrix and its derivative for
-        # the selected orientations.
-        n_coefficients = odf.shape[-1]
-        azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
-        matrix, dmatrix = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
-        self._matrix = cl.new_read_only_buffer(matrix.astype(np.float32))
-        self._dmatrix = cl.new_read_only_buffer(dmatrix.astype(np.float32))
-
+        # Check the shape of the fODF data. For now, only 45 coefficients are
+        # supported.
+        if odf.shape[-1] != 45:
+            raise ValueError(
+                "For now, only fODF with 45 coefficients are supported (lmax=8)."
+            )
         self._odf = cl.new_read_only_buffer(odf.astype(np.float32))
 
         # Add the random number states.
-        randoms_array = np.random.randint(4294967295, size=(n_streamlines, 2)).astype(np.uint32)
+        randoms_array = np.random.randint(4294967295, size=(n_streamlines, 2)).astype(
+            np.uint32
+        )
         self._randoms = cl.new_read_only_buffer(randoms_array)
 
         # Create the seed buffer on the device. They are stored as two float4.
@@ -56,8 +50,7 @@ class Diffusion:
             "nx": odf.shape[0],
             "ny": odf.shape[1],
             "nz": odf.shape[2],
-            "n_directions": len(vertices),
-            "n_coefficients": n_coefficients,
+            "n_coefficients": odf.shape[-1],
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
@@ -74,9 +67,6 @@ class Diffusion:
         args = (
             self._odf,
             self._iaffine,
-            self._vertices,
-            self._matrix,
-            self._dmatrix,
             self._seeds,
             self._randoms,
             np.float32(self._config.algorithms.diffusion.step_size),

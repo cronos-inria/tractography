@@ -5,7 +5,7 @@
 batch_size = 100000
 
 # The default step size.
-step_size = 0.25 # in seconds
+step_size = 1.0 # in seconds
 
 # The maximum angle between steps.
 max_angle = 45 # in degrees
