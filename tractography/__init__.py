@@ -1,5 +1,61 @@
-from . import algorithms, configuration, core, seeds, utils
+from . import algorithms, configuration, connectivity, core, seeds, utils
 from .core import Algorithm
+
+
+def connectome(
+    odf,
+    odf_affine,
+    segmentation,
+    segmentation_affine,
+    n_seeds: int = 100000,
+    config: configuration.Configuration | None = None,
+):
+    """Generate a structural connectivity matrix from ODFs
+
+    This function performs tractography using fODF data within and returns a
+    connectivity matrix representing the structural connections between
+    labeled brain regions.
+
+    Args:
+        odf: 4D array of fODF data.
+        odf_affine: Affine transformation matrix for the fODF image space.
+        segmentation: 3D labeled image indicating different brain regions.
+        segmentation_affine: Affine transformation matrix for the
+            segmentation image.
+        n_seeds: Total number of seeds to generate for tractography.
+        config: Configuration object specifying processing parameters.
+            If None, a default configuration is loaded.
+
+    Returns:
+        connectome: A symmetric connectivity matrix representing the number
+            of streamlines connecting each pair of brain regions.
+        labels: The labels associated with each row and column of the matrix.
+    """
+    if config is None:
+        config = configuration.load()
+
+    # Generate the seeds in the segmentated areas.
+    seed_odf = core.apply_mask(odf, odf_affine, segmentation, segmentation_affine)
+    algorithm = algorithms.Diffusion(odf, odf_affine, config.batch_size, config)
+
+    # Transform the segmentation into vertices.
+    vertices, labels = connectivity.convert_segmentation(
+        segmentation, segmentation_affine
+    )
+
+    # Perform tractography in batches.
+    streamlines = []
+    for _ in range(n_seeds // config.batch_size):
+        streamlines.extend(
+            algorithm.run(seeds.from_odf(seed_odf, odf_affine, config.batch_size))
+        )
+
+    # Map vertices to streamlines.
+    mapping = connectivity.map_vertices(vertices, streamlines, labels)
+    symmetric_mapping = connectivity.symmetrize_mapping(mapping)
+
+    # Compile the final matrix.
+    return connectivity.compile_connectivity_matrix(symmetric_mapping)
 
 
 def tractogram(
