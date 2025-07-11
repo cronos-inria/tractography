@@ -78,8 +78,8 @@ __kernel void tractography(
 		fod_azimuth_value *= d;
 
 		float st, ct, sp, cp;
-		st = sincos(angles.y, &ct);
 		sp = sincos(angles.x, &cp);
+		st = sincos(angles.y, &ct);
 
 		float4 et = {ct * cp, ct * sp, -st, 0.0f};
 		float4 ep = {-sp, cp, 0.0f, 0.0f};
@@ -87,7 +87,7 @@ __kernel void tractography(
 		float4 drift = (fod_colatitude_value * et + fod_azimuth_value * ep) / fod_value;
         float4 noise = randn(state) * et + randn(state) * ep;
 
-		float4 tangent = (gamma * dt) * drift + sqrt(gamma * dt) * noise;
+		float4 tangent = (gamma * dt) * drift + sqrt(2.0f * gamma * dt) * noise;
 		orientation = exps2(orientation, tangent, 1.0f);
 
 		// Move the point forwared and add it to the streamline.
