@@ -115,7 +115,7 @@ def from_odf(odf: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
         voxel = voxels[index]
         local = odf[*voxel]
         values = np.dot(ishtmtx, local)
-        cumsum = np.cumsum(np.maximum(values, np.max(values) * 0.00))
+        cumsum = np.cumsum(np.maximum(values, 0.0))
         i = np.searchsorted(cumsum, np.random.rand() * cumsum[-1])
         orientations.append(vertices[i])
 
@@ -125,6 +125,13 @@ def from_odf(odf: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
 def to_array(seeds: list[Seed]) -> npt.NDArray:
     """Split seeds into location and orientation"""
     return np.array([np.hstack((s.location, s.orientation)) for s in seeds])
+
+
+def to_tractogram(filename: Path, seeds: list[Seed]):
+    """Save the list of seeds to a tractogram file for visualization"""
+    streamlines = [np.vstack([s.location, s.location + s.orientation]) for s in seeds]
+    tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
+    nib.streamlines.TckFile(tractogram).save(filename)
 
 
 def save(filename: Path, seeds: list[Seed]):
