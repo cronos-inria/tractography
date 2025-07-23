@@ -1,6 +1,8 @@
 from . import algorithms, configuration, connectivity, core, seeds, utils
 from .core import Algorithm
 
+import numpy as np
+
 
 def connectome(
     odf,
@@ -8,6 +10,7 @@ def connectome(
     segmentation,
     segmentation_affine,
     n_seeds: int = 100000,
+    algorithm: Algorithm = Algorithm.DIFFUSION,
     config: configuration.Configuration | None = None,
 ):
     """Generate a structural connectivity matrix from ODFs
@@ -23,6 +26,7 @@ def connectome(
         segmentation_affine: Affine transformation matrix for the
             segmentation image.
         n_seeds: Total number of seeds to generate for tractography.
+        algorithm: The algorithm used to perform tractography.
         config: Configuration object specifying processing parameters.
             If None, a default configuration is loaded.
 
@@ -31,24 +35,18 @@ def connectome(
             of streamlines connecting each pair of brain regions.
         labels: The labels associated with each row and column of the matrix.
     """
-    if config is None:
-        config = configuration.load()
 
-    # Generate the seeds in the segmentated areas.
-    seed_odf = core.apply_mask(odf, odf_affine, segmentation, segmentation_affine)
-    algorithm = algorithms.Diffusion(odf, odf_affine, config.batch_size, config)
+    # Generate the seeds in the segmented areas.
+    seed_odf = core.apply_mask(odf, odf_affine, segmentation > 0, segmentation_affine)
+    s = seeds.from_odf(seed_odf, odf_affine, n_seeds)
+
+    # Perform tractography.
+    streamlines = tractogram(odf, odf_affine, s, algorithm, config, endpoints_only=True)
 
     # Transform the segmentation into vertices.
     vertices, labels = connectivity.convert_segmentation(
         segmentation, segmentation_affine
     )
-
-    # Perform tractography in batches.
-    streamlines = []
-    for _ in range(n_seeds // config.batch_size):
-        streamlines.extend(
-            algorithm.run(seeds.from_odf(seed_odf, odf_affine, config.batch_size))
-        )
 
     # Map vertices to streamlines.
     mapping = connectivity.map_vertices(vertices, streamlines, labels)
@@ -62,8 +60,9 @@ def tractogram(
     data,
     affine,
     seeds: list[seeds.Seed],
-    algorithm: Algorithm,
+    algorithm: Algorithm = Algorithm.DIFFUSION,
     config: configuration.Configuration | None = None,
+    endpoints_only: bool = False,
 ):
     """Generate a tractogram from dMRI data
 
@@ -76,10 +75,8 @@ def tractogram(
         affine: The affine transformation of the data.
         seeds: The seeds used for tractography. See tg.seeds.
         algorithm: The algorithm used to perform tractography.
-        step_size: The time interval between two steps.
-        n_steps: The maximum number of tractography steps to perform for each
-            streamline.
-        max_angle: The maximum angle between two steps.
+        config: Configuration object specifying processing parameters.
+            If None, a default configuration is loaded.
 
     Return:
         The generated tractogram, i.e. a list of streamlines.
@@ -94,24 +91,29 @@ def tractogram(
         data = utils.normalize_odf(data)
 
     if algorithm == Algorithm.DETERMINISTIC:
-        deterministic = algorithms.Deterministic(data, affine, len(seeds), config)
-        streamlines = deterministic.run(seeds)
+        tractography = algorithms.Deterministic(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.PROBABILISTIC:
-        probabilistic = algorithms.Probabilistic(data, affine, len(seeds), config)
-        streamlines = probabilistic.run(seeds)
+        tractography = algorithms.Probabilistic(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.BOLTZMANN:
-        boltzmann = algorithms.Boltzmann(data, affine, len(seeds), config)
-        streamlines = boltzmann.run(seeds)
+        tractography = algorithms.Boltzmann(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.FACT:
-        fact = algorithms.FACT(data, affine, len(seeds), config)
-        streamlines = fact.run(seeds)
+        tractography = algorithms.FACT(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.DIFFUSION:
-        fact = algorithms.Diffusion(data, affine, len(seeds), config)
-        streamlines = fact.run(seeds)
+        tractography = algorithms.Diffusion(data, affine, config.batch_size, config)
     else:
         raise ValueError(f"No algorithm associated with {algorithm}.")
 
-    # Clean a bit.
-    streamlines = [s for s in streamlines if len(s) > config.min_steps]
+    # Perform tractography in batches.
+    all_streamlines = []
+    for s in np.array_split(seeds, len(seeds) // config.batch_size):
+        streamlines = tractography.run(s)
 
-    return streamlines
+        # Clean a bit.
+        streamlines = [s for s in streamlines if len(s) > config.min_steps]
+        streamlines = [s for s in streamlines if not np.any(np.isnan(s)) and not np.any(np.isinf(s))]
+        if endpoints_only:
+            streamlines = [s[[0, -1]] for s in streamlines]
+
+        all_streamlines.extend(streamlines)
+
+    return all_streamlines
