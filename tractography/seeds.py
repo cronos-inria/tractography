@@ -127,23 +127,54 @@ def to_array(seeds: list[Seed]) -> npt.NDArray:
     return np.array([np.hstack((s.location, s.orientation)) for s in seeds])
 
 
-def to_tractogram(filename: Path, seeds: list[Seed]):
-    """Save the list of seeds to a tractogram file for visualization"""
-    streamlines = [np.vstack([s.location, s.location + s.orientation]) for s in seeds]
-    tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
-    nib.streamlines.TckFile(tractogram).save(filename)
-
-
 def save(filename: Path, seeds: list[Seed]):
-    """Save a list of seeds to file"""
-    data = [np.hstack((s.location, s.orientation)) for s in seeds]
-    np.savetxt(filename, data)
+    """Save a list of seeds to file
+
+    Saves the seeds to a file which can either be a text file
+    or a tractogram .tck.
+
+    Args:
+        filename: The name of the file to save. The extension
+            decides the file type.
+        seeds: The seeds to save.
+
+    """
+
+    match filename.suffix:
+        case ".txt":
+            data = [np.hstack((s.location, s.orientation)) for s in seeds]
+            np.savetxt(filename, data)
+        case ".tck":
+            data = [np.vstack((s.location, s.location + s.orientation)) for s in seeds]
+            tractogram = nib.streamlines.Tractogram(data, affine_to_rasmm=np.eye(4))
+            nib.streamlines.TckFile(tractogram).save(filename)
+        case _:
+            raise ValueError(f"Unknown file type {filename.suffix}")
 
 
 def load(filename: Path) -> list[Seed]:
-    """Load a list of seed from a file"""
-    data = np.loadtxt(filename)
-    return [Seed(d[:3], d[3:]) for d in data]
+    """Load a list of seed from a file
+
+    Loads the seeds from a file which can either be a text file
+    or a tractogram .tck.
+
+    Args:
+        filename: The name of the file to load.
+
+    Return
+        seeds: The loaded seeds.
+
+    """
+
+    match filename.suffix:
+        case ".txt":
+            data = np.loadtxt(filename)
+            return [Seed(d[:3], d[3:]) for d in data]
+        case ".tck":
+            streamlines = nib.streamlines.load(filename).streamlines
+            return [Seed(s[0], s[1] - s[0]) for s in streamlines]
+        case _:
+            raise ValueError(f"Unknown file type {filename.suffix}")
 
 
 def _triangle_normals(vs, ts):
