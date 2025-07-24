@@ -14,6 +14,7 @@ class Algorithm(Enum):
     BOLTZMANN = "boltzmann"
     FACT = "fact"
     DIFFUSION = "diffusion"
+    TRANSPORT = "transport"
 
     def __str__(self):
         return self.value

@@ -100,6 +100,8 @@ def tractogram(
         tractography = algorithms.FACT(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.DIFFUSION:
         tractography = algorithms.Diffusion(data, affine, config.batch_size, config)
+    elif algorithm == Algorithm.TRANSPORT:
+        tractography = algorithms.Transport(data, affine, config.batch_size, config)
     else:
         raise ValueError(f"No algorithm associated with {algorithm}.")
 

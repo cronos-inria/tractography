@@ -32,3 +32,8 @@ maximum_angle = 30 # in degrees
 step_size = 0.001 # in seconds, overrides the global step size
 save_at = 1.0 # in seconds
 inverse_curvature = 1.0
+
+[algorithms.transport]
+step_size = 0.001 # in seconds, overrides the global step size
+save_at = 1.0 # in seconds
+inverse_curvature = 0.5

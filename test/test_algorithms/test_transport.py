@@ -1,6 +1,5 @@
 import unittest
 from pathlib import Path
-from string import Template
 
 import nibabel as nib
 import numpy as np
@@ -15,8 +14,8 @@ _OPENCL_DIR = Path(__file__).parents[2] / "src"
 _DATA_DIR = Path(__file__).parents[1] / "data"
 
 
-class TestBoltzmann(unittest.TestCase):
-    """Test the OpenCL implementation of Boltzmann tractography"""
+class TestTransport(unittest.TestCase):
+    """Test the OpenCL implementation of Transport tractography"""
 
     def setUp(self):
         test.test_algorithms.generate_cross_test_data()
@@ -37,7 +36,7 @@ class TestBoltzmann(unittest.TestCase):
         config.step_size = 0.1
         config.streamline.length.minimum = 1
         config.streamline.length.maximum = 20
-        algorithm = tg.algorithms.Boltzmann(fod_data, fod.affine, len(seeds), config)
+        algorithm = tg.algorithms.Transport(fod_data, fod.affine, len(seeds), config)
         streamlines = algorithm.run(seeds)
 
         tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
@@ -61,7 +60,7 @@ class TestBoltzmann(unittest.TestCase):
         flags = cl.mem_flags.WRITE_ONLY
         results_buffer = cl.Buffer(_context, flags, size=results.nbytes)
 
-        # Compile the OpenCL program that implements Boltzmann tractography.
+        # Compile the OpenCL program that implements Transport tractography.
         program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
 
         program.test_modulus(
@@ -90,7 +89,7 @@ class TestBoltzmann(unittest.TestCase):
         colatitudes_buffer = cl.Buffer(_context, flags, size=colatitudes.nbytes)
         cl.enqueue_copy(_queue, colatitudes_buffer, colatitudes)
 
-        # Compile the OpenCL program that implements Boltzmann tractography.
+        # Compile the OpenCL program that implements Transport tractography.
         program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
 
         program.test_wrap(
@@ -142,7 +141,7 @@ class TestBoltzmann(unittest.TestCase):
         z_buffer = cl.Buffer(_context, flags, size=z.nbytes)
         cl.enqueue_copy(_queue, z_buffer, z)
 
-        # Compile the OpenCL program that implements Boltzmann tractography.
+        # Compile the OpenCL program that implements Transport tractography.
         program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
 
         program.test_sph2cart(
@@ -167,8 +166,8 @@ class TestBoltzmann(unittest.TestCase):
         """Test the sample_fod function"""
 
         # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context 
-        _queue = tg.algorithms.opencl._queue 
+        _context = tg.algorithms.opencl._context
+        _queue = tg.algorithms.opencl._queue
 
         flags = cl.mem_flags.READ_ONLY
         fod = np.random.rand(3, 4, 5, 6).astype(np.float32)
@@ -184,7 +183,7 @@ class TestBoltzmann(unittest.TestCase):
         coefficients = np.empty((6,), dtype=np.float32)
         coefficients_buffer = cl.Buffer(_context, flags, size=coefficients.nbytes)
 
-        # Compile the OpenCL program that implements Boltzmann tractography.
+        # Compile the OpenCL program that implements Transport tractography.
         program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
 
         x = np.arange(fod.shape[0])

@@ -42,12 +42,19 @@ class Diffusion(Algorithm):
     inverse_curvature: pydantic.PositiveFloat
 
 
+class Transport(Algorithm):
+    step_size: pydantic.PositiveFloat
+    save_at: pydantic.PositiveFloat
+    inverse_curvature: pydantic.PositiveFloat
+
+
 class Algorithms(pydantic.BaseModel):
     boltzmann: Boltzmann
     deterministic: Deterministic
     fact: FACT
     probabilistic: Probabilistic
     diffusion: Diffusion
+    transport: Transport
 
 
 class Configuration(pydantic.BaseModel):
