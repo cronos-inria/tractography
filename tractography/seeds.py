@@ -19,12 +19,12 @@ class Seed:
     orientation: npt.ArrayLike
 
 
-def from_surface(surface: nimesh.Mesh, n_seeds: int) -> list[Seed]:
+def from_surface(surface: nimesh.Mesh, n_seeds: int, cone_angle: float = 0) -> list[Seed]:
     """Generate seeds from a surface
 
     The seeds are generated randomly over the triangles of the
-    surface. The orientation of each seed is opposite to the normal
-    of the surface.
+    surface. The orientation of each seed is in a cone centered on
+    the normal of the surface.
 
     It is assumed the ordering of the triangle indices follows the
     right-hand rule and the normals point outward.
@@ -33,6 +33,7 @@ def from_surface(surface: nimesh.Mesh, n_seeds: int) -> list[Seed]:
         surface: The surface from which to generate the seeds, for example the
             lh.white from FreeSurfer.
         n_seeds: The number of seeds to generate.
+        cone_angle: The opening angle of the cone in degrees.
 
     Return:
         A list of `n_seeds` seeds suitable for tractography.
@@ -42,15 +43,23 @@ def from_surface(surface: nimesh.Mesh, n_seeds: int) -> list[Seed]:
     # First choose a triangle for every seed and generate a random point
     # inside that triangle.
     vertices, triangles = surface.vertices, surface.triangles
-    indices = np.random.randint(len(triangles), size=n_seeds)
+    triangle_vertices = vertices[triangles]
+    areas = np.linalg.norm(np.cross(
+        triangle_vertices[:, 0] - triangle_vertices[:, 1],
+        triangle_vertices[:, 0] - triangle_vertices[:, 2]), axis=-1) / 2
+    rng = np.random.default_rng()
+    indices = rng.choice(len(triangles), size=n_seeds, p=areas / np.sum(areas))
     barycentric = _random_barycentric_coordinates(n_seeds)
     triangle_indices = triangles[indices]
     triangle_vertices = vertices[triangle_indices]
     locations = np.sum(triangle_vertices * barycentric[..., None], axis=1)
 
-    # The orientations of the seeds are just triangle normals.
+    # The orientations of the seeds are random but oriented with the normals.
     normals = _triangle_normals(vertices, triangles)
-    orientations = -normals[indices]
+    if cone_angle == 0:
+        orientations = -normals[indices]
+    else:
+        orientations = _sample_cone(rng, -normals[indices], cone_angle)
 
     return [Seed(el, n) for el, n in zip(locations, orientations)]
 
@@ -193,3 +202,23 @@ def _random_barycentric_coordinates(n):
     a[to_update] = 1 - a[to_update]
     b[to_update] = 1 - b[to_update]
     return np.c_[1 - a - b, a, b]
+
+
+def _sample_cone(rng, orientations, angle):
+    """Sample a cone around an orientation"""
+
+    samples = np.zeros((len(orientations),3))
+    valid = np.sum(samples * orientations, axis=1) >= np.cos(np.deg2rad(angle))
+    while not np.all(valid):
+        samples[~valid] = _sample_sphere(rng, np.sum(~valid))
+        valid = np.sum(samples * orientations, axis=1) >= np.cos(np.deg2rad(angle))
+
+    return samples
+
+
+def _sample_sphere(rng, n_samples):
+    """Generate uniform samples on the sphere"""
+    u = rng.uniform(size=(2, n_samples))
+    phi = 2 * np.pi * u[0]
+    theta = np.arccos(1 - 2 * u[1])
+    return np.vstack([np.sin(theta) * np.sin(phi), np.sin(theta) * np.cos(phi), np.cos(theta)]).T

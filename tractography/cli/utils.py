@@ -46,17 +46,17 @@ def add_tractography_config(parser: argparse.ArgumentParser):
 def set_tractography_config(config: tg.configuration.Configuration, kwargs):
     """Map CLI arguments back to the configuration"""
 
-    if kwargs["batch_size"] is not None:
+    if "batch_size" in kwargs and kwargs["batch_size"] is not None:
         config.batch_size = kwargs["batch_size"]
 
-    if kwargs["step_size"] is not None:
+    if "step_size" in kwargs and kwargs["step_size"] is not None:
         config.step_size = kwargs["step_size"]
 
-    if kwargs["max_angle"] is not None:
+    if "max_angle" in kwargs and kwargs["max_angle"] is not None:
         config.max_angle = kwargs["max_angle"]
 
-    if kwargs["min_length"] is not None:
+    if "min_length" in kwargs and kwargs["min_length"] is not None:
         config.streamline.length.minimum = kwargs["min_length"]
 
-    if kwargs["max_length"] is not None:
+    if "max_length" in kwargs and kwargs["max_length"] is not None:
         config.streamline.length.maximum = kwargs["max_length"]

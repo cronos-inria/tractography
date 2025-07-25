@@ -4,6 +4,7 @@ from pathlib import Path
 
 import nibabel as nib
 import numpy as np
+import scipy
 
 
 _DESCRIPTION = """
@@ -29,7 +30,7 @@ def main(image_path: Path, mask_path: Path, **kwargs: dict):
     """Generate a mask from image data"""
     mask_nii = nib.load(image_path)
     mask_data = mask_nii.get_fdata()
-    mask = np.isin(mask_data, _WM_LABELS).astype(np.uint8)
+    mask = scipy.ndimage.binary_dilation(np.isin(mask_data, _WM_LABELS)).astype(np.uint8)
     nib.save(nib.Nifti1Image(mask, mask_nii.affine), mask_path)
 
 

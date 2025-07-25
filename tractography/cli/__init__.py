@@ -31,7 +31,7 @@ def parse_arguments():
 def main():
 
     args = parse_arguments()
-    parameters = {k: v for k, v in vars(args).items() if k != "func"}
+    parameters = {k: v for k, v in vars(args).items() if k not in ["func", "subcommand"]}
     args.func(**parameters)
 
 
