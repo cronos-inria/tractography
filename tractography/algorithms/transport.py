@@ -62,9 +62,9 @@ class Transport:
             self._odf,
             self._iaffine,
             self._seeds,
-            np.float32(self._config.algorithms.diffusion.step_size),
-            np.float32(self._config.algorithms.diffusion.save_at),
-            np.float32(self._config.algorithms.diffusion.inverse_curvature),
+            np.float32(self._config.algorithms.transport.step_size),
+            np.float32(self._config.algorithms.transport.save_at),
+            np.float32(self._config.algorithms.transport.inverse_curvature),
             self._streamlines,
             self._lengths,
         )
