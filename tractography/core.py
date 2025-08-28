@@ -11,7 +11,6 @@ class Algorithm(Enum):
 
     DETERMINISTIC = "det"
     PROBABILISTIC = "prob"
-    BOLTZMANN = "boltzmann"
     FACT = "fact"
     DIFFUSION = "diffusion"
     TRANSPORT = "transport"

@@ -28,10 +28,6 @@ class Probabilistic(Algorithm):
     maximum_angle: pydantic.PositiveFloat
 
 
-class Boltzmann(Algorithm):
-    acceleration_factor: pydantic.PositiveFloat
-
-
 class FACT(Algorithm):
     maximum_angle: pydantic.PositiveFloat
 
@@ -49,7 +45,6 @@ class Transport(Algorithm):
 
 
 class Algorithms(pydantic.BaseModel):
-    boltzmann: Boltzmann
     deterministic: Deterministic
     fact: FACT
     probabilistic: Probabilistic

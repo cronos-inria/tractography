@@ -71,8 +71,6 @@ def histogram(
         implementation = algorithms.Deterministic(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.PROBABILISTIC:
         implementation = algorithms.Probabilistic(data, affine, config.batch_size, config)
-    elif algorithm == Algorithm.BOLTZMANN:
-        implementation = algorithms.Boltzmann(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.FACT:
         implementation = algorithms.FACT(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.DIFFUSION:
@@ -129,8 +127,6 @@ def tractogram(
         tractography = algorithms.Deterministic(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.PROBABILISTIC:
         tractography = algorithms.Probabilistic(data, affine, config.batch_size, config)
-    elif algorithm == Algorithm.BOLTZMANN:
-        tractography = algorithms.Boltzmann(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.FACT:
         tractography = algorithms.FACT(data, affine, config.batch_size, config)
     elif algorithm == Algorithm.DIFFUSION:

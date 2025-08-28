@@ -25,7 +25,7 @@ def new_read_only_buffer(data):
 
 def build_program(values, name):
 
-    # Compile the OpenCL program that implements Boltzmann tractography.
+    # Compile the OpenCL program that implements tractography.
     with open(_OPENCL_DIR / name) as f:
         kernel = f.read()
     template = Template(kernel)
