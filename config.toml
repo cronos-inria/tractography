@@ -2,17 +2,17 @@
 
 
 # The number of streamlines generated per batch.
-batch_size = 100000
+batch_size = 50000
 
 # The default step size.
-step_size = 1.0 # in seconds
+step_size = 0.25 # in seconds
 
 # The maximum angle between steps.
 max_angle = 45 # in degrees
 
 [streamline]
 length.minimum = 10.0  # in mm
-length.maximum = 400.0 # in mm
+length.maximum = 300.0 # in mm
 
 [algorithms]
 
@@ -26,14 +26,14 @@ maximum_angle = 30 # in degrees
 maximum_angle = 60 # in degrees
 
 [algorithms.probabilistic]
-maximum_angle = 30 # in degrees
+maximum_angle = 20 # in degrees
 
 [algorithms.diffusion]
 step_size = 0.001 # in seconds, overrides the global step size
-save_at = 1.0 # in seconds
-inverse_curvature = 1.0
+save_at = 0.25 # in seconds
+inverse_curvature = 0.5
 
 [algorithms.transport]
 step_size = 0.001 # in seconds, overrides the global step size
-save_at = 1.0 # in seconds
+save_at = 0.25 # in seconds
 inverse_curvature = 0.5
