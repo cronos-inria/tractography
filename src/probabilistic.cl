@@ -2,7 +2,7 @@
 
 float4 pick_orientation(
 		__global const float fod[$nx][$ny][$nz][$n_directions],
-		__local const float4 vertices[$n_directions],
+		__global const float4 vertices[$n_directions],
 		float4 orientation,
 		float3 voxel,
 		float rand,
@@ -29,6 +29,71 @@ float4 pick_orientation(
 	return (float4) 0;
 }
 
+size_t closest_direction_index(
+		__global const float4 directions[162],
+		float4 orientation)
+{
+
+	// Pick the valid direction with max value.
+	size_t best_index = 0;
+	float current_max = -2.0f;
+	for (size_t i = 0; i < 162; i++) {
+		float value = dot(directions[i], orientation);
+		if (value > current_max) {
+			current_max = value;
+			best_index = i;
+		}
+	}
+
+	return best_index;
+}
+
+__kernel void histogram(
+        __global const float fod[$nx][$ny][$nz][$n_directions],
+        __global const float4 affine[4],
+        __global const float4 directions[$n_directions],
+        __global const float4 seeds[$n_streamlines][2],
+        float dt,
+        float max_angle,
+        __global unsigned int hist[$nx][$ny][$nz][162])
+{
+    uint gid = get_global_id(0);
+	uint lid = get_local_id(0);
+	uint2 state = {gid, 0};
+
+	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
+
+	// Initialize the first streamline point and orientation with the seed.
+	float4 point = seeds[gid][0];
+	float4 orientation = seeds[gid][1];
+
+	size_t n;
+	for (n = 1; n < $n_steps; n++ ) {
+
+		// Go back to voxel space.
+		float3 voxel = to_voxel(iaffine, point);
+		if (!in_image(voxel, $nx, $ny, $nz)) {
+			break;
+		}
+		uint3 index = to_index(voxel);
+
+		// Add the current orientation to the histogram.
+		atomic_inc(hist[index.x][index.y][index.z] + closest_direction_index(directions, orientation));
+
+		// Pick the next direction.	
+		float rand = randu(&state);
+		orientation = pick_orientation(fod, directions, orientation, voxel, rand, max_angle);
+
+		// If the orientation is 0, there is nowhere to go.
+		if (length(orientation) < 0.5) {
+			break;
+		}
+
+		// Move the point forwared and add it to the streamline.
+		point += dt * orientation;
+	}
+}
+
 __kernel void tractography(
         __global const float fod[$nx][$ny][$nz][$n_directions],
         __global const float4 affine[4],
@@ -44,11 +109,6 @@ __kernel void tractography(
 	uint2 state = {gid, 0};
 
 	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
-
-	local float4 nvertices[$n_directions];
-	if (lid < $n_directions)
-		nvertices[lid] = vertices[lid];
-	barrier(CLK_LOCAL_MEM_FENCE);
 
 	// Initialize the first streamline point and orientation with the seed.
 	float4 point = seeds[gid][0];
@@ -68,7 +128,7 @@ __kernel void tractography(
 
 		// Pick the next direction.	
 		float rand = randu(&state);
-		orientation = pick_orientation(fod, nvertices, orientation, voxel, rand, max_angle);
+		orientation = pick_orientation(fod, vertices, orientation, voxel, rand, max_angle);
 
 		// If the orientation is 0, there is nowhere to go.
 		if (length(orientation) < 0.5) {
@@ -81,4 +141,3 @@ __kernel void tractography(
 	}
 	lengths[gid] = n;
 }
-

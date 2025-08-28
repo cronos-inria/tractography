@@ -56,6 +56,41 @@ def connectome(
     return connectivity.compile_connectivity_matrix(symmetric_mapping)
 
 
+def histogram(
+    data,
+    affine,
+    seeds: list[seeds.Seed],
+    algorithm: Algorithm = Algorithm.DIFFUSION,
+    config: configuration.Configuration | None = None,
+):
+
+    if config is None:
+        config = configuration.load()
+
+    if algorithm == Algorithm.DETERMINISTIC:
+        implementation = algorithms.Deterministic(data, affine, config.batch_size, config)
+    elif algorithm == Algorithm.PROBABILISTIC:
+        implementation = algorithms.Probabilistic(data, affine, config.batch_size, config)
+    elif algorithm == Algorithm.BOLTZMANN:
+        implementation = algorithms.Boltzmann(data, affine, config.batch_size, config)
+    elif algorithm == Algorithm.FACT:
+        implementation = algorithms.FACT(data, affine, config.batch_size, config)
+    elif algorithm == Algorithm.DIFFUSION:
+        implementation = algorithms.Diffusion(data, affine, config.batch_size, config)
+    elif algorithm == Algorithm.TRANSPORT:
+        implementation = algorithms.Transport(data, affine, config.batch_size, config)
+    else:
+        raise ValueError(f"No algorithm associated with {algorithm}.")
+
+    # Construct histogram in batches.
+    histogram = 0
+    for s in np.array_split(seeds, len(seeds) // config.batch_size):
+        batch_histogram, bin_centers = implementation.histogram(s)
+        histogram = histogram + batch_histogram
+
+    return histogram, bin_centers
+
+
 def tractogram(
     data,
     affine,

@@ -51,3 +51,7 @@ def copy_from_buffer(buffer, data):
 
 def run_program(program, args, n_threads):
     return program.tractography(_queue, (n_threads,), None, *args)
+
+
+def run_histogram(program, args, n_threads):
+    return program.histogram(_queue, (n_threads,), None, *args)
