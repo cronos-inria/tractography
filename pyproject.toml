@@ -1,3 +1,24 @@
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "tractography"
+authors = [
+	{name = "cronos"},
+]
+version = "0.0.0"
+readme = "README.rst"
+requires-python = ">=3.11"
+dependencies = [
+	"numpy>=2.0",
+    "nibabel~=5.3",
+    "scipy>=1.15",
+    "pyopencl>=2024",
+    "siphash24~=1.7",
+    "nimesh>=0.0.2",
+    "pydantic~=2.10",
+]
+
+[project.scripts]
+tractography = "tractography.cli:main"
