@@ -40,7 +40,7 @@ inline bool in_image(float3 voxel, uint nx, uint ny, uint nz) {
 }
 
 inline uint3 to_index(float3 voxel) {
-	uint3 index = {(uint) rint(voxel.x), (uint) rint(voxel.y), (uint) rint(voxel.z)};
+	uint3 index = {(uint) floor(voxel.x), (uint) floor(voxel.y), (uint) floor(voxel.z)};
 	return index;
 }
 

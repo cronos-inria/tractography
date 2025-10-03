@@ -7,41 +7,69 @@ import pyopencl as cl
 import scipy.interpolate as si
 
 import tractography as tg
-import test.test_algorithms
+import test
 
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
-_DATA_DIR = Path(__file__).parents[1] / "data"
+_TEST_RESULTS_DIR = (
+    Path(__file__).parents[2] / "test-results" / "algorithms" / "transport"
+)
 
 
 class TestTransport(unittest.TestCase):
     """Test the OpenCL implementation of Transport tractography"""
 
     def setUp(self):
-        test.test_algorithms.generate_cross_test_data()
+        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    def test_cross_tractography(self):
-        """Test tractography on the cross dataset"""
+    def test_uniform_isotropic(self):
+        """Test transport tractography on a uniform isotropic fOD field"""
 
-        fod = nib.load(_DATA_DIR / "cross-fod.nii.gz")
-        wm_mask = nib.load(_DATA_DIR / "cross-wm.nii.gz")
-        seed_mask = nib.load(_DATA_DIR / "cross-seed.nii.gz")
-        seeds = tg.seeds.from_mask(seed_mask.get_fdata(), seed_mask.affine, 1000)
+        # Prepare the data.
+        fod = test.data.uniform_isotropic()
+        affine = np.eye(4)
+        seeds = tg.seeds.from_odf(fod, affine, 1000)
+        nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "uniform-fod.nii.gz")
 
-        fod_data = tg.core.apply_mask(
-            fod.get_fdata(), fod.affine, wm_mask.get_fdata(), wm_mask.affine
-        )
-
+        # Generate the tractogram.
         config = tg.configuration.load()
-        config.step_size = 0.1
-        config.streamline.length.minimum = 1
-        config.streamline.length.maximum = 20
-        algorithm = tg.algorithms.Transport(fod_data, fod.affine, len(seeds), config)
+        algorithm = tg.algorithms.Transport(fod, affine, len(seeds), config)
         streamlines = algorithm.run(seeds)
 
+        # In an isotropic field, transport tractography should produce only
+        # straight lines.
+        for streamline in streamlines:
+            d = np.diff(streamline, n=2, axis=0)
+            np.testing.assert_array_less(d, 1e-3)
+
+        # Save the streamlines for QA.
         tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
         tck = nib.streamlines.TckFile(tractogram)
-        tck.save(_DATA_DIR / "cross-streamlines-boltzmann.tck")
+        tck.save(_TEST_RESULTS_DIR / "uniform-streamlines.tck")
+
+    def test_cross(self):
+        """Test tractography on the cross dataset"""
+
+        # Prepare the data.
+        fod = test.data.cross()
+        affine = np.eye(4)
+        nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "cross-fod.nii.gz")
+        wm = fod[..., 0] > 0
+        nib.save(
+            nib.Nifti1Image(wm.astype(np.uint8), affine),
+            _TEST_RESULTS_DIR / "cross-wm.nii.gz",
+        )
+        seeds = tg.seeds.from_mask(wm, affine, 1000)
+
+        # Generate the tractogram.
+        config = tg.configuration.load()
+        algorithm = tg.algorithms.Transport(fod, affine, len(seeds), config)
+        streamlines = algorithm.run(seeds)
+
+        # Save the streamlines for QA.
+        tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
+        tck = nib.streamlines.TckFile(tractogram)
+        tck.save(_TEST_RESULTS_DIR / "cross-streamlines.tck")
 
     def test_mod(self):
         """Test the modulo operation"""
