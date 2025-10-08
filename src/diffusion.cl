@@ -94,8 +94,8 @@ __kernel void histogram(
 			fod_colatitude_value += fod[index.x][index.y][index.z][i] * ylm_dt[i];
 			fod_azimuth_value += fod[index.x][index.y][index.z][i] * ylm_dp[i];
 		}
-		fod_value = softmax(fod_value, 100.0f);
 		float d = dsoftmax(fod_value, 100.0f);
+		fod_value = softmax(fod_value, 100.0f);
 		fod_colatitude_value *= d;
 		fod_azimuth_value *= d;
 
@@ -176,8 +176,8 @@ __kernel void tractography(
 			fod_colatitude_value += fod[index.x][index.y][index.z][i] * ylm_dt[i];
 			fod_azimuth_value += fod[index.x][index.y][index.z][i] * ylm_dp[i];
 		}
-		fod_value = softmax(fod_value, 100.0f);
 		float d = dsoftmax(fod_value, 100.0f);
+		fod_value = softmax(fod_value, 100.0f);
 		fod_colatitude_value *= d;
 		fod_azimuth_value *= d;
 
