@@ -12,8 +12,7 @@ float4 pick_orientation(
 
 	// Pick the valid direction with max value.
 	float4 current_orientation = 0;
-	float current_max = 0.1;
-	float valid;
+	float current_max = 0.0;
 	for (size_t i = 0; i < $n_directions; i++) {
 		if (dot(vertices[i], orientation) < max_angle) {
 			continue;
