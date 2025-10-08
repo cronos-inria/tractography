@@ -1,17 +1,31 @@
 void ishtmtx(float phi, float theta, float ylm[45], float ylm_dp[45], float ylm_dt[45]) {
 
-	float st, ct, sp, cp;
+	float st, ct;
 	st = sincos(theta, &ct);
-	sp = sincos(phi, &cp);
 	
-	float s2p, c2p, s3p, c3p, s4p, c4p, s5p, c5p, s6p, c6p, s7p, c7p, s8p, c8p;
+	float sp, cp, s2p, c2p, s3p, c3p, s4p, c4p, s5p, c5p, s6p, c6p, s7p, c7p, s8p, c8p;
+	sp = sincos(phi, &cp);
 	s2p = sincos(2.0f * phi, &c2p);
-	s3p = sincos(3.0f * phi, &c3p);
-	s4p = sincos(4.0f * phi, &c4p);
-	s5p = sincos(5.0f * phi, &c5p);
-	s6p = sincos(6.0f * phi, &c6p);
-	s7p = sincos(7.0f * phi, &c7p);
-	s8p = sincos(8.0f * phi, &c8p);
+	
+	// Use recursion instead of:
+	// s3p = sincos(3.0f * phi, &c3p);
+	s3p = 2 * cp * s2p - sp;
+	c3p = 2 * cp * c2p - cp;
+	// s4p = sincos(4.0f * phi, &c4p);
+	s4p = 2 * cp * s3p - s2p;
+	c4p = 2 * cp * c3p - c2p;
+	// s5p = sincos(5.0f * phi, &c5p);
+	s5p = 2 * cp * s4p - s3p;
+	c5p = 2 * cp * c4p - c3p;
+	// s6p = sincos(6.0f * phi, &c6p);
+	s6p = 2 * cp * s5p - s4p;
+	c6p = 2 * cp * c5p - c4p;
+	// s7p = sincos(7.0f * phi, &c7p);
+	s7p = 2 * cp * s6p - s5p;
+	c7p = 2 * cp * c6p - c5p;
+	// s8p = sincos(8.0f * phi, &c8p);
+	s8p = 2 * cp * s7p - s6p;
+	c8p = 2 * cp * c7p - c6p;
 
 	// Precompute some values.
 	float st2 = st * st;
