@@ -53,7 +53,7 @@ __kernel void histogram(
         __global unsigned int hist[$nx][$ny][$nz][162])
 {
     uint gid = get_global_id(0);
-	uint2* state = randoms + gid;
+	uint2 state = randoms[gid];
 
 	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
 
@@ -107,7 +107,7 @@ __kernel void histogram(
 		float4 ep = {-sp, cp, 0.0f, 0.0f};
 		
 		float4 drift = (fod_colatitude_value * et + fod_azimuth_value * ep) / fod_value;
-        float4 noise = randn(state) * et + randn(state) * ep;
+        float4 noise = randn(&state) * et + randn(&state) * ep;
 
 		float4 tangent = (gamma * dt) * drift + sqrt(2.0f * gamma * dt) * noise;
 		orientation = exps2(orientation, tangent, 1.0f);
@@ -122,6 +122,7 @@ __kernel void histogram(
 			n++;
 		}
 	}
+	randoms[gid] = state;
 }
 
 
@@ -137,7 +138,7 @@ __kernel void tractography(
         __global uint lengths[$n_streamlines])
 {
     uint gid = get_global_id(0);
-	uint2* state = randoms + gid;
+	uint2 state = randoms[gid];
 
 	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
 
@@ -189,7 +190,7 @@ __kernel void tractography(
 		float4 ep = {-sp, cp, 0.0f, 0.0f};
 		
 		float4 drift = (fod_colatitude_value * et + fod_azimuth_value * ep) / fod_value;
-        float4 noise = randn(state) * et + randn(state) * ep;
+        float4 noise = randn(&state) * et + randn(&state) * ep;
 
 		float4 tangent = (gamma * dt) * drift + sqrt(2.0f * gamma * dt) * noise;
 		orientation = exps2(orientation, tangent, 1.0f);
@@ -207,5 +208,6 @@ __kernel void tractography(
 
 	}
 	lengths[gid] = n;
+	randoms[gid] = state;
 }
 
