@@ -10,11 +10,14 @@ import tractography as tg
 
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
-_DATA_DIR = Path(__file__).parents[1] / "data"
+_TEST_RESULTS_DIR = Path(__file__).parents[2] / "test-results" / "algorithms" / "core"
 
 
 class TestCore(unittest.TestCase):
     """Test the OpenCL implementation of core functions"""
+
+    def setUp(self):
+        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     def test_cart2sph(self):
         """Test the cart2sph function"""
@@ -56,7 +59,6 @@ class TestCore(unittest.TestCase):
     def test_randu(self):
         """Test the randu function"""
 
-
         # Create the global OpenCL context.
         _context = tg.algorithms.opencl._context
         _queue = tg.algorithms.opencl._queue
@@ -69,17 +71,21 @@ class TestCore(unittest.TestCase):
         program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
 
         program.test_randu(
-            _queue, (1,), None, values_buffer, np.uint32(len(values)),
+            _queue,
+            (1,),
+            None,
+            values_buffer,
+            np.uint32(len(values)),
         )
         cl.enqueue_copy(_queue, values, values_buffer)
 
         plt.hist(values, bins=100)
         plt.title("Uniform distribution")
-        plt.savefig(_DATA_DIR / "uniform.png")
+        plt.savefig(_TEST_RESULTS_DIR / "uniform.png")
+        plt.close()
 
     def test_randn(self):
         """Test the randn function"""
-
 
         # Create the global OpenCL context.
         _context = tg.algorithms.opencl._context
@@ -93,11 +99,15 @@ class TestCore(unittest.TestCase):
         program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
 
         program.test_randn(
-            _queue, (1,), None, values_buffer, np.uint32(len(values)),
+            _queue,
+            (1,),
+            None,
+            values_buffer,
+            np.uint32(len(values)),
         )
         cl.enqueue_copy(_queue, values, values_buffer)
-        
+
         plt.hist(values, bins=100)
         plt.title("Normal distribution")
-        plt.savefig(_DATA_DIR / "normal.png")
-
+        plt.savefig(_TEST_RESULTS_DIR / "normal.png")
+        plt.close()
