@@ -24,11 +24,11 @@ Command-line interface
 
 Many feature of the package are available via the CLI.
 You can see the different subcommands using :code:`tractography --help`.
-For example, to perform tractography using a deterministic algorithm, the simplest command is
+For example, to perform tractography using the transport (deterministic) algorithm, the simplest command is
 
 .. code-block:: bash
 
-   tractography tractogram det my_fod.nii.gz tractogram.tck
+   tractography tractogram transport my_fod.nii.gz tractogram.tck
 
 Python
 ^^^^^^
@@ -48,6 +48,6 @@ To generete streamlines from the Python pacakge
  
    fod = tg.core.apply_mask(fod, fod_nii.affine, wm, wm_nii.affine)
 
-   seeds = tg.seeds.from_odf(fod, fod_nii.affine, 2000)
-   streamlines = tg.tractogram(fod, fod_nii.affine, seeds, tg.Algorithm.PROBABILISTIC)
+   seeds = tg.seeds.from_odf(fod, fod_nii.affine, 50000)
+   streamlines = tg.tractogram(fod, fod_nii.affine, seeds)  # The default algorithm is diffusion
 
