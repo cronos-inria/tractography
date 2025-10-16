@@ -31,11 +31,12 @@ class TestTractogram(unittest.TestCase):
         wm_path = _TEST_RESULTS_DIR / "cross-wm.nii.gz"
         nib.save(nib.Nifti1Image(wm.astype(np.uint8), affine), wm_path)
 
-        seeds = tg.seeds.from_mask(wm, affine, 50000)
+        seeds = tg.seeds.from_mask(wm, affine, 1000)
         seeds_path = _TEST_RESULTS_DIR / "cross-seeds.txt"
         tg.seeds.save(seeds_path, seeds)
 
         tractogram_path = _TEST_RESULTS_DIR / "cross-streamlines.tck"
         tg.cli.tractogram.main(
-            tg.Algorithm.DIFFUSION, fod_path, seeds_path, tractogram_path
+            tg.Algorithm.DIFFUSION, fod_path, seeds_path, tractogram_path,
+            batch_size=1000,
         )

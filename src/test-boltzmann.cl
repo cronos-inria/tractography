@@ -34,7 +34,11 @@ __kernel void test_wrap(
 	int n_values)
 {
 	for (size_t i = 0; i < n_values; i++) {
-		wrap(azimuths + i, colatitudes + i);
+		float a = azimuths[i];
+		float c = colatitudes[i];
+		wrap(&a, &c);
+		azimuths[i] = a;
+		colatitudes[i] = c;
 	}
 }
 

@@ -1,10 +1,8 @@
 import unittest
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pyopencl as cl
-import scipy.interpolate as si
 
 import tractography as tg
 
@@ -79,11 +77,6 @@ class TestCore(unittest.TestCase):
         )
         cl.enqueue_copy(_queue, values, values_buffer)
 
-        plt.hist(values, bins=100)
-        plt.title("Uniform distribution")
-        plt.savefig(_TEST_RESULTS_DIR / "uniform.png")
-        plt.close()
-
     def test_randn(self):
         """Test the randn function"""
 
@@ -106,8 +99,3 @@ class TestCore(unittest.TestCase):
             np.uint32(len(values)),
         )
         cl.enqueue_copy(_queue, values, values_buffer)
-
-        plt.hist(values, bins=100)
-        plt.title("Normal distribution")
-        plt.savefig(_TEST_RESULTS_DIR / "normal.png")
-        plt.close()
