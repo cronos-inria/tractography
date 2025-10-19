@@ -11,7 +11,7 @@ Quickstart
 Install
 ^^^^^^^
 
-To install the package, clone the repository and install the package and its dependencies in editable mode
+If you have a GPU and have the drivers installed and up-to-date, the install should be as simple as cloning the repository and using pip. We recommend installing in editable mode with
 
 .. code-block:: bash
 
@@ -19,16 +19,39 @@ To install the package, clone the repository and install the package and its dep
    cd tractography
    pip install -e .
 
+If you would like to use the CPU version, then we recommend using anaconda for the installation
+
+.. code-block:: bash
+
+    conda create -n tractography python=3
+    conda activate tractography
+    conda install anaconda::binutils
+    conda install numpy
+    conda install -c conda-forge pocl
+    conda install -c conda-forge pyopencl
+    git clone https://gitlab.inria.fr/cronos/software/tractography.git
+    cd tractography
+    pip install -e .
+
+Testing
+^^^^^^^
+
+To verify the installation, make sure you are in the tractography directory and run
+
+.. code-block:: bash
+
+   python -m unittest
+
 Command-line interface
 ^^^^^^^^^^^^^^^^^^^^^^
 
 Many feature of the package are available via the command-line interface.
 You can see the different subcommands using :code:`tractography --help`.
-The general pipeline follow these steps:
+A simple streamline generation pipeline follows these steps:
 
-1. Estimate fibre orientation distributions (FOD);
-2. Generate seeds from the FOD;
-3. Run the tractography algorithm to generate streamlines.
+1. estimate fibre orientation distributions (FOD);
+2. generate seeds from the FOD;
+3. run the tractography algorithm to generate streamlines.
 
 This package supports steps 2 and 3, step 1 has to be performed with other software.
 
