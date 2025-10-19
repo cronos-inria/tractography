@@ -91,14 +91,15 @@ def from_mask(mask: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed
     return [Seed(el, n) for el, n in zip(locations, orientations)]
 
 
-def from_odf(odf: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
-    """Generate seeds from orientation distribution functions
+def from_fod(fod: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
+    """Generate seeds from fibre orientation distributions (FOD)
 
-    The seeds are generate in voxels with non-zero average ODFs with the
-    orientations importance sampled.
+    The seeds are generated uniformly in voxels with non-zero average
+    FOD with the orientations importance sampled according to the local
+    FOD.
 
     Args:
-        odf: The numpy array containing the ODFs.
+        fod: The numpy array containing the FOD.
         affine: The affine transform to native space.
         n_seeds: The number of seeds to generate.
 
@@ -108,7 +109,7 @@ def from_odf(odf: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
     """
 
     # Get the non-zero voxels.
-    voxels = np.array(list(zip(*np.nonzero(odf[..., 0]))))
+    voxels = np.array(list(zip(*np.nonzero(fod[..., 0]))))
     indices = np.random.randint(len(voxels), size=n_seeds)
     locations_voxel = voxels[indices] + np.random.rand(n_seeds, 3) - [0.5, 0.5, 0.5]
     locations = nib.affines.apply_affine(affine, locations_voxel)
@@ -116,13 +117,13 @@ def from_odf(odf: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
     # Preprare discretization of the ODFs.
     vertices = tg.core.fibonacci_sphere(1000)
     azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
-    ishtmtx, _ = tg.core.ishtmtx(azimuths, colatitudes, odf.shape[-1])
+    ishtmtx, _ = tg.core.ishtmtx(azimuths, colatitudes, fod.shape[-1])
 
     # Importance sample the ODFs based on the discretization.
     orientations = []
     for index in indices:
         voxel = voxels[index]
-        local = odf[*voxel]
+        local = fod[*voxel]
         values = np.dot(ishtmtx, local)
         cumsum = np.cumsum(np.maximum(values, 0.0))
         i = np.searchsorted(cumsum, np.random.rand() * cumsum[-1])

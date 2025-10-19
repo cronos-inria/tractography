@@ -26,7 +26,7 @@ class TestDiffusion(unittest.TestCase):
         # Prepare the data.
         fod = test.data.uniform_isotropic()
         affine = np.eye(4)
-        seeds = tg.seeds.from_odf(fod, affine, 1000)
+        seeds = tg.seeds.from_fod(fod, affine, 1000)
         nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "uniform-fod.nii.gz")
 
         # Generate the tractogram.

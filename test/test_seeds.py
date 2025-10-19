@@ -47,13 +47,13 @@ class TestFromODF(unittest.TestCase):
         seeds = tg.seeds.from_mask(wm, affine, 1000)
 
         fod_data = tg.utils.normalize_odf(fod)
-        seeds = tg.seeds.from_odf(fod_data, affine, 100000)
+        seeds = tg.seeds.from_fod(fod_data, affine, 100000)
         self.assertEqual(len(seeds), 100000)
 
         # Test simple saving and loading to .tck.
         with tempfile.TemporaryDirectory() as d:
-            tg.seeds.save(Path(d) / "cross-seeds-from-odf.tck", seeds)
-            loaded = tg.seeds.load(Path(d) / "cross-seeds-from-odf.tck")
+            tg.seeds.save(Path(d) / "cross-seeds-from-fod.tck", seeds)
+            loaded = tg.seeds.load(Path(d) / "cross-seeds-from-fod.tck")
 
         for ell, s in zip(seeds, loaded):
             np.testing.assert_array_almost_equal(s.orientation, ell.orientation)
