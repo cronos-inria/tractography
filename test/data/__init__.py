@@ -28,8 +28,33 @@ def uniform_isotropic(shape=(10, 10, 10), n_coefficients=45):
     return _fit_spherical_harmonics(fod_values, bvectors, n_coefficients)
 
 
+def circle(shape=(10, 10, 1), n_coefficients=45, radius=2, width=1):
+    """Generate a circle fibre orientation distributions"""
+    bvectors = tg.core.fibonacci_sphere(n_coefficients * 3)
+    fod_values = np.zeros(shape + (len(bvectors),))
+    center = np.array(shape, dtype=float) / 2 - 0.5
+
+    for i, j, k in np.ndindex(*shape):
+        x, y, z = np.r_[i, j, k] - center
+        r = np.sqrt(x * x + y * y)
+        if radius - width < r < radius + width:
+            eigvec = np.array(
+                [
+                    [y / r, x / r, 0],
+                    [-x / r, y / r, 0],
+                    [0, 0, 1.0],
+                ]
+            )
+            tensor = eigvec.dot(np.diag([1.0, 5.0, 5.0])).dot(eigvec.T)
+
+            fod_values[i, j, k] = np.exp(
+                -np.diag(np.dot(np.dot(bvectors, tensor), bvectors.T))
+            )
+    return _fit_spherical_harmonics(fod_values, bvectors, n_coefficients)
+
+
 def cross(shape=(10, 10, 1), n_coefficients=45):
-    """Generate a crossing fiber fODF field"""
+    """Generate a crossing fibre orientation distributions"""
     bvectors = tg.core.fibonacci_sphere(n_coefficients * 3)
     fod_values = np.zeros(shape + (len(bvectors),))
 

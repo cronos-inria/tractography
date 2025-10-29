@@ -39,7 +39,7 @@ class TestDiffusion(unittest.TestCase):
         tck = nib.streamlines.TckFile(tractogram)
         tck.save(_TEST_RESULTS_DIR / "uniform-streamlines.tck")
 
-    def test_cross_tractography(self):
+    def test_cross(self):
         """Test tractography on the cross dataset"""
 
         # Prepare the data.
@@ -62,3 +62,45 @@ class TestDiffusion(unittest.TestCase):
         tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
         tck = nib.streamlines.TckFile(tractogram)
         tck.save(_TEST_RESULTS_DIR / "cross-streamlines.tck")
+
+    def test_circle(self):
+        """Test tractography on the circle dataset"""
+
+        # Prepare the data.
+        shape = (10, 10, 1)
+        radius = 2
+        fod = test.data.circle(shape=shape, radius=radius)
+        affine = np.eye(4)
+        affine[:3, 3] = -0.5
+        nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "circle-fod.nii.gz")
+        wm = fod[..., 0] > 0
+        nib.save(
+            nib.Nifti1Image(wm.astype(np.uint8), affine),
+            _TEST_RESULTS_DIR / "circle-wm.nii.gz",
+        )
+        seeds = [
+            tg.seeds.Seed(
+                [(shape[0] - 1) / 2, (shape[1] - 1) / 2 + radius, 0.0], [1.0, 0.0, 0.0]
+            )
+            for _ in range(100)
+        ]
+
+        # Generate the tractogram. We set a few specific parameters due to the
+        # small size of the circle.
+        config = tg.configuration.load()
+        config.streamline.length.maximum = 100
+        config.algorithms.diffusion.step_size = 1e-4
+        config.algorithms.diffusion.inverse_curvature = 50.0
+        config.algorithms.diffusion.noise_variance = 0.5
+        algorithm = tg.algorithms.Diffusion(fod, affine, len(seeds), config)
+        streamlines = algorithm.run(seeds)
+
+        # Save the streamlines for QA.
+        tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=affine)
+        tck = nib.streamlines.TckFile(tractogram)
+        tck.save(_TEST_RESULTS_DIR / "circle-streamlines.tck")
+
+        # The streamlines should run until the maximum lenght is reached.
+        for streamline in streamlines:
+            length = len(streamline) * config.algorithms.diffusion.save_at
+            self.assertAlmostEqual(length, config.streamline.length.maximum)
