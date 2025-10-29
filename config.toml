@@ -29,6 +29,7 @@ maximum_angle = 20 # in degrees
 step_size = 0.001 # in seconds, overrides the global step size
 save_at = 0.25 # in seconds
 inverse_curvature = 0.5
+noise_variance = 2.0 # Keeping it at 2 fits the FOD
 
 [algorithms.transport]
 step_size = 0.001 # in seconds, overrides the global step size

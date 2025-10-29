@@ -76,7 +76,9 @@ class Diffusion:
             for index in indices:
                 if index != -1:
                     bin_areas[i] += mesh.area_faces[index] / 3
-        bin_centers = mesh.vertices / np.linalg.norm(mesh.vertices, axis=1, keepdims=True)
+        bin_centers = mesh.vertices / np.linalg.norm(
+            mesh.vertices, axis=1, keepdims=True
+        )
         bin_centers = np.c_[bin_centers, np.zeros((162, 1))].astype(np.float32)
         bin_centers_buffer = cl.new_read_only_buffer(bin_centers)
 
@@ -118,6 +120,7 @@ class Diffusion:
             np.float32(self._config.algorithms.diffusion.step_size),
             np.float32(self._config.algorithms.diffusion.save_at),
             np.float32(self._config.algorithms.diffusion.inverse_curvature),
+            np.float32(self._config.algorithms.diffusion.noise_variance),
             self._streamlines,
             self._lengths,
         )

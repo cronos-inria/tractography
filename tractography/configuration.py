@@ -36,6 +36,7 @@ class Diffusion(Algorithm):
     step_size: pydantic.PositiveFloat
     save_at: pydantic.PositiveFloat
     inverse_curvature: pydantic.PositiveFloat
+    noise_variance: pydantic.PositiveFloat
 
 
 class Transport(Algorithm):

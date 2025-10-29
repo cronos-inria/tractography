@@ -134,6 +134,7 @@ __kernel void tractography(
         float dt,
 		float save_at,
 		float gamma,
+		float noise_variance,
         __global float4 streamlines[$n_streamlines][$n_steps],
         __global uint lengths[$n_streamlines])
 {
@@ -192,7 +193,7 @@ __kernel void tractography(
 		float4 drift = (fod_colatitude_value * et + fod_azimuth_value * ep) / fod_value;
         float4 noise = randn(&state) * et + randn(&state) * ep;
 
-		float4 tangent = (gamma * dt) * drift + sqrt(2.0f * gamma * dt) * noise;
+		float4 tangent = (gamma * dt) * drift + sqrt(noise_variance * gamma * dt) * noise;
 		orientation = exps2(orientation, tangent, 1.0f);
 
 		// Move the point forwared and add it to the streamline.
