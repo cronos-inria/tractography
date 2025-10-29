@@ -1,7 +1,22 @@
 import numpy as np
+import pydantic
 
 import tractography as tg
 from . import opencl as cl
+
+from .configuration import Algorithm, BaseConfiguration
+
+
+class Configuration(BaseConfiguration):
+    inverse_curvature: pydantic.PositiveFloat
+
+    @property
+    def implementation(self):
+        return Transport
+
+    @classmethod
+    def load(cls):
+        return super().load(Algorithm.TRANSPORT)
 
 
 class Transport:
@@ -62,9 +77,9 @@ class Transport:
             self._odf,
             self._iaffine,
             self._seeds,
-            np.float32(self._config.algorithms.transport.step_size),
-            np.float32(self._config.algorithms.transport.save_at),
-            np.float32(self._config.algorithms.transport.inverse_curvature),
+            np.float32(self._config.step_size),
+            np.float32(self._config.save_at),
+            np.float32(self._config.inverse_curvature),
             self._streamlines,
             self._lengths,
         )

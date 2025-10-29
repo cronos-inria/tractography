@@ -1,5 +1,5 @@
 from . import algorithms, configuration, connectivity, core, seeds, utils
-from .core import Algorithm
+from .algorithms.configuration import Algorithm, BaseConfiguration
 
 import numpy as np
 
@@ -10,8 +10,7 @@ def connectome(
     segmentation,
     segmentation_affine,
     n_seeds: int = 100000,
-    algorithm: Algorithm = Algorithm.DIFFUSION,
-    config: configuration.Configuration | None = None,
+    config: BaseConfiguration | None = None,
 ):
     """Generate a structural connectivity matrix from ODFs
 
@@ -26,9 +25,9 @@ def connectome(
         segmentation_affine: Affine transformation matrix for the
             segmentation image.
         n_seeds: Total number of seeds to generate for tractography.
-        algorithm: The algorithm used to perform tractography.
-        config: Configuration object specifying processing parameters.
-            If None, a default configuration is loaded.
+        config: Configuration object specifying processing parameters and the
+            algorithm to use. If None, a default configuration for the
+            transport algorithm is loaded. See tg.configuration.load.
 
     Returns:
         connectome: A symmetric connectivity matrix representing the number
@@ -41,7 +40,7 @@ def connectome(
     s = seeds.from_odf(seed_odf, odf_affine, n_seeds)
 
     # Perform tractography.
-    streamlines = tractogram(odf, odf_affine, s, algorithm, config, endpoints_only=True)
+    streamlines = tractogram(odf, odf_affine, s, config, endpoints_only=True)
 
     # Transform the segmentation into vertices.
     vertices, labels = connectivity.convert_segmentation(
@@ -60,25 +59,13 @@ def histogram(
     data,
     affine,
     seeds: list[seeds.Seed],
-    algorithm: Algorithm = Algorithm.DIFFUSION,
-    config: configuration.Configuration | None = None,
+    config: BaseConfiguration | None = None,
 ):
 
     if config is None:
-        config = configuration.load()
+        config = configuration.load(Algorithm.TRANSPORT)
 
-    if algorithm == Algorithm.DETERMINISTIC:
-        implementation = algorithms.Deterministic(data, affine, config.batch_size, config)
-    elif algorithm == Algorithm.PROBABILISTIC:
-        implementation = algorithms.Probabilistic(data, affine, config.batch_size, config)
-    elif algorithm == Algorithm.FACT:
-        implementation = algorithms.FACT(data, affine, config.batch_size, config)
-    elif algorithm == Algorithm.DIFFUSION:
-        implementation = algorithms.Diffusion(data, affine, config.batch_size, config)
-    elif algorithm == Algorithm.TRANSPORT:
-        implementation = algorithms.Transport(data, affine, config.batch_size, config)
-    else:
-        raise ValueError(f"No algorithm associated with {algorithm}.")
+    implementation = config.implementation(data, affine, config.batch_size, config)
 
     # Construct histogram in batches.
     histogram = 0
@@ -93,8 +80,7 @@ def tractogram(
     data,
     affine,
     seeds: list[seeds.Seed],
-    algorithm: Algorithm = Algorithm.DIFFUSION,
-    config: configuration.Configuration | None = None,
+    config: BaseConfiguration | None = None,
     endpoints_only: bool = False,
 ):
     """Generate a tractogram from dMRI data
@@ -107,9 +93,11 @@ def tractogram(
             fiber orientation distributions in spherical harmonics form.
         affine: The affine transformation of the data.
         seeds: The seeds used for tractography. See tg.seeds.
-        algorithm: The algorithm used to perform tractography.
-        config: Configuration object specifying processing parameters.
-            If None, a default configuration is loaded.
+        config: Configuration object specifying processing parameters and the
+            algorithm to use. If None, a default configuration for the
+            transport algorithm is loaded. See tg.configuration.load.
+        endpoints_only: Only the start and end points of the streamlines will
+            be returned. Greatly reduces the memory footprint.
 
     Return:
         The generated tractogram, i.e. a list of streamlines.
@@ -117,33 +105,22 @@ def tractogram(
     """
 
     if config is None:
-        config = configuration.load()
+        config = configuration.load(Algorithm.TRANSPORT)
 
-    # Normalize the ODFs if needed.
-    if algorithm != Algorithm.FACT:
-        data = utils.normalize_odf(data)
-
-    if algorithm == Algorithm.DETERMINISTIC:
-        tractography = algorithms.Deterministic(data, affine, config.batch_size, config)
-    elif algorithm == Algorithm.PROBABILISTIC:
-        tractography = algorithms.Probabilistic(data, affine, config.batch_size, config)
-    elif algorithm == Algorithm.FACT:
-        tractography = algorithms.FACT(data, affine, config.batch_size, config)
-    elif algorithm == Algorithm.DIFFUSION:
-        tractography = algorithms.Diffusion(data, affine, config.batch_size, config)
-    elif algorithm == Algorithm.TRANSPORT:
-        tractography = algorithms.Transport(data, affine, config.batch_size, config)
-    else:
-        raise ValueError(f"No algorithm associated with {algorithm}.")
+    implementation = config.implementation(data, affine, config.batch_size, config)
 
     # Perform tractography in batches.
     all_streamlines = []
     for s in np.array_split(seeds, len(seeds) // config.batch_size):
-        streamlines = tractography.run(s)
+        streamlines = implementation.run(s)
 
         # Clean a bit.
         streamlines = [s for s in streamlines if len(s) > config.min_steps]
-        streamlines = [s for s in streamlines if not np.any(np.isnan(s)) and not np.any(np.isinf(s))]
+        streamlines = [
+            s
+            for s in streamlines
+            if not np.any(np.isnan(s)) and not np.any(np.isinf(s))
+        ]
         if endpoints_only:
             streamlines = [s[[0, -1]] for s in streamlines]
 

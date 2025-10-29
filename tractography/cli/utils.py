@@ -43,7 +43,9 @@ def add_tractography_config(parser: argparse.ArgumentParser):
     )
 
 
-def set_tractography_config(config: tg.configuration.Configuration, kwargs):
+def set_tractography_config(
+    config: tg.algorithms.configuration.BaseConfiguration, kwargs
+):
     """Map CLI arguments back to the configuration"""
 
     if "batch_size" in kwargs and kwargs["batch_size"] is not None:

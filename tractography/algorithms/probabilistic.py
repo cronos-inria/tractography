@@ -1,8 +1,22 @@
 import numpy as np
+import pydantic
 import trimesh
 
 import tractography as tg
 from . import opencl as cl
+from .configuration import Algorithm, BaseConfiguration
+
+
+class Configuration(BaseConfiguration):
+    maximum_angle: pydantic.PositiveInt  # in degrees
+
+    @property
+    def implementation(self):
+        return Probabilistic
+
+    @classmethod
+    def load(cls):
+        return super().load(Algorithm.PROBABILISTIC)
 
 
 class Probabilistic:
@@ -128,11 +142,13 @@ class Probabilistic:
             for index in indices:
                 if index != -1:
                     bin_areas[i] += mesh.area_faces[index] / 3
-        bin_centers = mesh.vertices / np.linalg.norm(mesh.vertices, axis=1, keepdims=True)
+        bin_centers = mesh.vertices / np.linalg.norm(
+            mesh.vertices, axis=1, keepdims=True
+        )
         bin_centers = np.c_[bin_centers, np.zeros((162, 1))].astype(np.float32)
         bin_centers_buffer = cl.new_read_only_buffer(bin_centers)
 
-        max_angle = self._config.algorithms.probabilistic.maximum_angle
+        max_angle = self._config.maximum_angle
         args = (
             self._values,
             self._iaffine,
@@ -175,7 +191,7 @@ class Probabilistic:
         events.append(cl.copy_to_buffer(self._seeds, array))
 
         # Track streamlines.
-        max_angle = self._config.algorithms.probabilistic.maximum_angle
+        max_angle = self._config.maximum_angle
         args = (
             self._values,
             self._iaffine,

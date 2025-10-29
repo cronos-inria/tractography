@@ -83,5 +83,5 @@ To generate streamlines from the Python package using the diffusion (probabilist
    seeds = tg.seeds.from_fod(fod, fod_nii.affine, 50000)
 
    # Run the tractography algorithm to generate streamlines.
-   streamlines = tg.tractogram(fod, fod_nii.affine, seeds)  # The default algorithm is diffusion
-
+   config = tg.configuration.load(tg.Algorithm.DIFFUSION)  # The default algorithm is diffusion
+   streamlines = tg.tractogram(fod, fod_nii.affine, seeds, config)

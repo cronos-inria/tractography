@@ -1,77 +1,33 @@
-from pathlib import Path
-import tomllib
-
-import numpy as np
-import pydantic
-
-
-_DEFAULT_CONFIG_FILE = Path(__file__).parents[1] / "config.toml"
+from .algorithms.deterministic import Configuration as DeterministicConfiguration
+from .algorithms.probabilistic import Configuration as ProbabilisticConfiguration
+from .algorithms.transport import Configuration as TransportConfiguration
+from .algorithms.diffusion import Configuration as DiffusionConfiguration
+from .algorithms.configuration import Algorithm, BaseConfiguration
 
 
-class Length(pydantic.BaseModel):
-    minimum: pydantic.PositiveFloat
-    maximum: pydantic.PositiveFloat
+def load(algorithm: Algorithm) -> BaseConfiguration:
+    """Loads the default configuration for the specified algorithm
 
+    The default configuration is loaded from the file in config/<algoname>.toml
+    where <algoname> is deterministic, probabilistic, transport, or diffusion.
 
-class Streamline(pydantic.BaseModel):
-    length: Length
+    Args:
+        algorithm: The algorithm for which to load the configuration.
 
+    Returns:
+        A subclass of BaseConfiguration that contains the default parameter
+        values for the specified algorithm.
 
-class Algorithm(pydantic.BaseModel): ...
+    """
+    if algorithm == Algorithm.DETERMINISTIC:
+        config = DeterministicConfiguration
+    elif algorithm == Algorithm.PROBABILISTIC:
+        config = ProbabilisticConfiguration
+    elif algorithm == Algorithm.DIFFUSION:
+        config = DiffusionConfiguration
+    elif algorithm == Algorithm.TRANSPORT:
+        config = TransportConfiguration
+    else:
+        raise ValueError(f"No algorithm associated with {algorithm}.")
 
-
-class Deterministic(Algorithm):
-    maximum_angle: pydantic.PositiveFloat
-
-
-class Probabilistic(Algorithm):
-    maximum_angle: pydantic.PositiveFloat
-
-
-class FACT(Algorithm):
-    maximum_angle: pydantic.PositiveFloat
-
-
-class Diffusion(Algorithm):
-    step_size: pydantic.PositiveFloat
-    save_at: pydantic.PositiveFloat
-    inverse_curvature: pydantic.PositiveFloat
-    noise_variance: pydantic.PositiveFloat
-
-
-class Transport(Algorithm):
-    step_size: pydantic.PositiveFloat
-    save_at: pydantic.PositiveFloat
-    inverse_curvature: pydantic.PositiveFloat
-
-
-class Algorithms(pydantic.BaseModel):
-    deterministic: Deterministic
-    fact: FACT
-    probabilistic: Probabilistic
-    diffusion: Diffusion
-    transport: Transport
-
-
-class Configuration(pydantic.BaseModel):
-    batch_size: pydantic.PositiveInt
-    step_size: pydantic.PositiveFloat
-    max_angle: pydantic.PositiveInt
-    streamline: Streamline
-    algorithms: Algorithms
-
-    @property
-    def n_steps(self) -> int:
-        return int(np.floor(self.streamline.length.maximum / self.step_size))
-
-    @property
-    def min_steps(self) -> int:
-        return int(np.ceil(self.streamline.length.minimum / self.step_size))
-
-
-def load():
-    """Load the configuration from a file"""
-    with open(_DEFAULT_CONFIG_FILE, "rb") as f:
-        config = tomllib.load(f)
-
-    return Configuration.model_validate(config)
+    return config.load()

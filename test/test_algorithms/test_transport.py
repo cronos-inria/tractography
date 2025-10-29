@@ -32,7 +32,7 @@ class TestTransport(unittest.TestCase):
         nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "uniform-fod.nii.gz")
 
         # Generate the tractogram.
-        config = tg.configuration.load()
+        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
         algorithm = tg.algorithms.Transport(fod, affine, len(seeds), config)
         streamlines = algorithm.run(seeds)
 
@@ -62,7 +62,7 @@ class TestTransport(unittest.TestCase):
         seeds = tg.seeds.from_mask(wm, affine, 1000)
 
         # Generate the tractogram.
-        config = tg.configuration.load()
+        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
         algorithm = tg.algorithms.Transport(fod, affine, len(seeds), config)
         streamlines = algorithm.run(seeds)
 
@@ -94,10 +94,10 @@ class TestTransport(unittest.TestCase):
 
         # Generate the tractogram. We set a few specific parameters due to the
         # small size of the circle.
-        config = tg.configuration.load()
+        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
         config.streamline.length.maximum = 100
-        config.algorithms.transport.step_size = 1e-4
-        config.algorithms.transport.inverse_curvature = 50.0
+        config.step_size = 1e-4
+        config.inverse_curvature = 50.0
         algorithm = tg.algorithms.Transport(fod, affine, len(seeds), config)
         streamlines = algorithm.run(seeds)
 
@@ -107,7 +107,7 @@ class TestTransport(unittest.TestCase):
         tck.save(_TEST_RESULTS_DIR / "circle-streamlines.tck")
 
         # The streamlines should run until the maximum lenght is reached.
-        length = len(streamlines[0]) * config.algorithms.transport.save_at
+        length = len(streamlines[0]) * config.save_at
         self.assertAlmostEqual(length, config.streamline.length.maximum)
 
     def test_mod(self):

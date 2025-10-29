@@ -1,8 +1,23 @@
 import numpy as np
+import pydantic
 import trimesh
 
 import tractography as tg
 from . import opencl as cl
+from .configuration import Algorithm, BaseConfiguration
+
+
+class Configuration(BaseConfiguration):
+    inverse_curvature: pydantic.PositiveFloat
+    noise_variance: pydantic.PositiveFloat
+
+    @property
+    def implementation(self):
+        return Diffusion
+
+    @classmethod
+    def load(cls):
+        return super().load(Algorithm.DIFFUSION)
 
 
 class Diffusion:
@@ -88,9 +103,9 @@ class Diffusion:
             self._seeds,
             self._randoms,
             bin_centers_buffer,
-            np.float32(self._config.algorithms.diffusion.step_size),
-            np.float32(self._config.algorithms.diffusion.save_at),
-            np.float32(self._config.algorithms.diffusion.inverse_curvature),
+            np.float32(self._config.step_size),
+            np.float32(self._config.save_at),
+            np.float32(self._config.inverse_curvature),
             hist_buffer,
         )
         cl.run_histogram(self._program, args, self._n_streamlines)
@@ -117,10 +132,10 @@ class Diffusion:
             self._iaffine,
             self._seeds,
             self._randoms,
-            np.float32(self._config.algorithms.diffusion.step_size),
-            np.float32(self._config.algorithms.diffusion.save_at),
-            np.float32(self._config.algorithms.diffusion.inverse_curvature),
-            np.float32(self._config.algorithms.diffusion.noise_variance),
+            np.float32(self._config.step_size),
+            np.float32(self._config.save_at),
+            np.float32(self._config.inverse_curvature),
+            np.float32(self._config.noise_variance),
             self._streamlines,
             self._lengths,
         )

@@ -37,6 +37,6 @@ class TestTractogram(unittest.TestCase):
 
         tractogram_path = _TEST_RESULTS_DIR / "cross-streamlines.tck"
         tg.cli.tractogram.main(
-            tg.Algorithm.DIFFUSION, fod_path, seeds_path, tractogram_path,
+            fod_path, seeds_path, tractogram_path,
             batch_size=1000,
         )

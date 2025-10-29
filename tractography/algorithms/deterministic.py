@@ -1,7 +1,21 @@
 import numpy as np
+import pydantic
 
 import tractography as tg
 from . import opencl as cl
+from .configuration import Algorithm, BaseConfiguration
+
+
+class Configuration(BaseConfiguration):
+    maximum_angle: pydantic.PositiveInt  # in degrees
+
+    @property
+    def implementation(self):
+        return Deterministic
+
+    @classmethod
+    def load(cls):
+        return super().load(Algorithm.DETERMINISTIC)
 
 
 class Deterministic:

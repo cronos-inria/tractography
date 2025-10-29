@@ -44,16 +44,16 @@ the filename of the mask used for tractography
 
 
 def main(
-    algorithm: tg.Algorithm,
     image_path: Path,
     seeds_path: Path,
     tractogram_path: Path,
-    **kwargs
+    algorithm: tg.Algorithm = tg.Algorithm.TRANSPORT,
+    **kwargs,
 ):
     """Entry-point of the tractography CLI"""
 
     # Load the default config and set user parameters.
-    config = tg.configuration.load()
+    config = tg.configuration.load(algorithm)
     tg.cli.utils.set_tractography_config(config, kwargs)
 
     # Load the seeds from the provided surface.
@@ -69,7 +69,7 @@ def main(
         mask = mask_nii.get_fdata()
         data = tg.core.apply_mask(data, nii.affine, mask, mask_nii.affine)
 
-    streamlines = tg.tractogram(data, nii.affine, seeds, algorithm, config)
+    streamlines = tg.tractogram(data, nii.affine, seeds, config)
 
     # Save the resulting tractogram.
     tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
@@ -82,13 +82,16 @@ def add_parser(subparsers):
     subparser = subparsers.add_parser(
         "tractogram", description=_DESCRIPTION, help=_HELP
     )
-    subparser.add_argument(
-        "algorithm", type=tg.Algorithm, choices=list(tg.Algorithm), help=_ALGORITHM_HELP
-    )
     subparser.add_argument("image_path", type=Path, help=_IMAGE_HELP)
     subparser.add_argument("seeds_path", type=Path, help=_SEEDS_HELP)
     subparser.add_argument("tractogram_path", type=Path, help=_TRACTOGRAM_HELP)
     subparser.add_argument("--mask", type=Path, help=_MASK_HELP)
+    subparser.add_argument(
+        "--algorithm",
+        type=tg.Algorithm,
+        choices=list(tg.Algorithm),
+        help=_ALGORITHM_HELP,
+    )
 
     # Add the common configuration options.
     tg.cli.utils.add_tractography_config(subparser)

@@ -30,7 +30,7 @@ class TestDiffusion(unittest.TestCase):
         nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "uniform-fod.nii.gz")
 
         # Generate the tractogram.
-        config = tg.configuration.load()
+        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
         algorithm = tg.algorithms.Diffusion(fod, affine, len(seeds), config)
         streamlines = algorithm.run(seeds)
 
@@ -54,7 +54,7 @@ class TestDiffusion(unittest.TestCase):
         seeds = tg.seeds.from_mask(wm, affine, 1000)
 
         # Generate the tractogram.
-        config = tg.configuration.load()
+        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
         algorithm = tg.algorithms.Diffusion(fod, affine, len(seeds), config)
         streamlines = algorithm.run(seeds)
 
@@ -87,11 +87,11 @@ class TestDiffusion(unittest.TestCase):
 
         # Generate the tractogram. We set a few specific parameters due to the
         # small size of the circle.
-        config = tg.configuration.load()
+        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
         config.streamline.length.maximum = 100
-        config.algorithms.diffusion.step_size = 1e-4
-        config.algorithms.diffusion.inverse_curvature = 50.0
-        config.algorithms.diffusion.noise_variance = 0.5
+        config.step_size = 1e-4
+        config.inverse_curvature = 50.0
+        config.noise_variance = 0.1
         algorithm = tg.algorithms.Diffusion(fod, affine, len(seeds), config)
         streamlines = algorithm.run(seeds)
 
@@ -102,5 +102,5 @@ class TestDiffusion(unittest.TestCase):
 
         # The streamlines should run until the maximum lenght is reached.
         for streamline in streamlines:
-            length = len(streamline) * config.algorithms.diffusion.save_at
+            length = len(streamline) * config.save_at
             self.assertAlmostEqual(length, config.streamline.length.maximum)
