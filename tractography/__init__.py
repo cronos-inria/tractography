@@ -116,11 +116,9 @@ def tractogram(
 
         # Clean a bit.
         streamlines = [s for s in streamlines if len(s) > config.min_steps]
-        streamlines = [
-            s
-            for s in streamlines
-            if not np.any(np.isnan(s)) and not np.any(np.isinf(s))
-        ]
+        if any([np.any(np.isnan(s)) or np.any(np.isinf(s)) for s in streamlines]):
+            raise ValueError("Is nan!")
+
         if endpoints_only:
             streamlines = [s[[0, -1]] for s in streamlines]
 

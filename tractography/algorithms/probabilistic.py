@@ -75,6 +75,12 @@ class Probabilistic:
         seeds_array = np.empty((n_streamlines, 8), dtype=np.float32)
         self._seeds = cl.new_read_only_buffer(seeds_array)
 
+        # Add the random number states.
+        randoms_array = np.random.randint(4294967295, size=(n_streamlines, 2)).astype(
+            np.uint32
+        )
+        self._randoms = cl.new_read_only_buffer(randoms_array)
+
         # Reserve space for the streamlines on the device. The are
         # stored as float4.
         streamlines_nbytes = n_streamlines * config.n_steps * 4 * 4
@@ -83,35 +89,13 @@ class Probabilistic:
         self._zeros = np.zeros(self._n_streamlines, dtype=np.float32)
         self._ones = np.ones(self._n_streamlines, dtype=np.float32)
 
-        # Preallocate the output.
-        buffer = cl.cl.Buffer(
-            cl._context,
-            cl.cl.mem_flags.READ_WRITE | cl.cl.mem_flags.ALLOC_HOST_PTR,
-            size=streamlines_nbytes,
-        )
-        self._output, event = cl.cl.enqueue_map_buffer(
-            cl._queue,
-            buffer,
-            cl.cl.map_flags.READ,
-            0,
-            shape=(n_streamlines, config.n_steps, 4),
-            dtype=np.float32,
-        )
-        self._streamlines = buffer
-        buffer = cl.cl.Buffer(
-            cl._context,
-            cl.cl.mem_flags.READ_WRITE | cl.cl.mem_flags.ALLOC_HOST_PTR,
-            size=n_streamlines * 4,
-        )
-        self._output_lengths, event = cl.cl.enqueue_map_buffer(
-            cl._queue,
-            buffer,
-            cl.cl.map_flags.READ,
-            0,
-            shape=(n_streamlines,),
-            dtype=np.uint32,
-        )
-        self._lengths = buffer
+        # Reserve space for the streamlines on the device. The are
+        # stored as float4.
+        streamlines_nbytes = n_streamlines * config.n_steps * 4 * 4
+        self._streamlines = cl.new_write_only_buffer(streamlines_nbytes)
+
+        # Reserve space for the length of the streamlines on the device.
+        self._lengths = cl.new_write_only_buffer(n_streamlines * 4)
 
         # Build the OpenCL program that implements tractography.
         values = {
@@ -154,6 +138,7 @@ class Probabilistic:
             self._iaffine,
             bin_centers_buffer,  # We use the bin centers instead of vertices.
             self._seeds,
+            self._randoms,
             np.float32(self._config.step_size),
             np.float32(np.cos(np.deg2rad(max_angle))),
             hist_buffer,
@@ -197,14 +182,18 @@ class Probabilistic:
             self._iaffine,
             self._vertices,
             self._seeds,
+            self._randoms,
             np.float32(self._config.step_size),
             np.float32(np.cos(np.deg2rad(max_angle))),
             self._streamlines,
             self._lengths,
         )
-        events.append(cl.run_program(self._program, args, self._n_streamlines))
-        events.append(cl.copy_from_buffer(self._lengths, self._output_lengths))
-        events.append(cl.copy_from_buffer(self._streamlines, self._output))
-        cl.cl.wait_for_events(events)
+        cl.run_program(self._program, args, self._n_streamlines)
+        streamlines = np.zeros(
+            (self._n_streamlines, self._config.n_steps, 4), dtype=np.float32
+        )
+        cl.copy_from_buffer(self._streamlines, streamlines)
+        lengths = np.zeros((self._n_streamlines,), dtype=np.uint32)
+        cl.copy_from_buffer(self._lengths, lengths)
 
-        return [self._output[i, :n, :3] for i, n in enumerate(self._output_lengths)]
+        return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]

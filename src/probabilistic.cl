@@ -4,12 +4,10 @@ float4 pick_orientation(
 		__global const float fod[$nx][$ny][$nz][$n_directions],
 		__global const float4 vertices[$n_directions],
 		float4 orientation,
-		float3 voxel,
+		uint3 index,
 		float rand,
 		float max_angle)
 {
-
-	uint3 index = to_index(voxel);
 
 	// Find the valid orientations.
 	float sum = 0;
@@ -53,13 +51,13 @@ __kernel void histogram(
         __global const float4 affine[4],
         __global const float4 directions[$n_directions],
         __global const float4 seeds[$n_streamlines][2],
+        __global uint2 randoms[$n_streamlines],
         float dt,
         float max_angle,
         __global unsigned int hist[$nx][$ny][$nz][162])
 {
     uint gid = get_global_id(0);
-	uint lid = get_local_id(0);
-	uint2 state = {gid, 0};
+	uint2 state = randoms[gid];
 
 	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
 
@@ -82,7 +80,7 @@ __kernel void histogram(
 
 		// Pick the next direction.	
 		float rand = randu(&state);
-		orientation = pick_orientation(fod, directions, orientation, voxel, rand, max_angle);
+		orientation = pick_orientation(fod, directions, orientation, index, rand, max_angle);
 
 		// If the orientation is 0, there is nowhere to go.
 		if (length(orientation) < 0.5) {
@@ -92,6 +90,7 @@ __kernel void histogram(
 		// Move the point forwared and add it to the streamline.
 		point += dt * orientation;
 	}
+	randoms[gid] = state;
 }
 
 __kernel void tractography(
@@ -99,14 +98,14 @@ __kernel void tractography(
         __global const float4 affine[4],
         __global const float4 vertices[$n_directions],
         __global const float4 seeds[$n_streamlines][2],
+        __global uint2 randoms[$n_streamlines],
         float dt,
         float max_angle,
         __global float4 streamlines[$n_streamlines][$n_steps],
         __global uint lengths[$n_streamlines])
 {
     uint gid = get_global_id(0);
-	uint lid = get_local_id(0);
-	uint2 state = {gid, 0};
+	uint2 state = randoms[gid];
 
 	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
 
@@ -120,18 +119,17 @@ __kernel void tractography(
 
 		// Go back to voxel space.
 		float3 voxel = to_voxel(iaffine, point);
-
-		// Check if we are in the image, stop if not.
 		if (!in_image(voxel, $nx, $ny, $nz)) {
 			break;
 		}
+		uint3 index = to_index(voxel);
 
 		// Pick the next direction.	
 		float rand = randu(&state);
-		orientation = pick_orientation(fod, vertices, orientation, voxel, rand, max_angle);
+		orientation = pick_orientation(fod, vertices, orientation, index, rand, max_angle);
 
 		// If the orientation is 0, there is nowhere to go.
-		if (length(orientation) < 0.5) {
+		if (length(orientation) < 0.5f) {
 			break;
 		}
 
@@ -140,4 +138,5 @@ __kernel void tractography(
 		streamlines[gid][n] = point;
 	}
 	lengths[gid] = n;
+	randoms[gid] = state;
 }
