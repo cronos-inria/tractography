@@ -1,4 +1,3 @@
-#include "core.cl"
 #include "spharm.cl"
 
 float4 exps2(float4 p, float4 x, float t) {

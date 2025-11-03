@@ -85,10 +85,6 @@ class Probabilistic:
         # stored as float4.
         streamlines_nbytes = n_streamlines * config.n_steps * 4 * 4
 
-        # Fill columns for seeds.
-        self._zeros = np.zeros(self._n_streamlines, dtype=np.float32)
-        self._ones = np.ones(self._n_streamlines, dtype=np.float32)
-
         # Reserve space for the streamlines on the device. The are
         # stored as float4.
         streamlines_nbytes = n_streamlines * config.n_steps * 4 * 4
@@ -112,7 +108,6 @@ class Probabilistic:
 
         # Transfer the seeds to the buffer.
         array = tg.seeds.to_array(seeds).astype(np.float32)
-        array = np.c_[array[:, :3], self._ones, array[:, 3:], self._zeros]
         cl.copy_to_buffer(self._seeds, array)
 
         # Reserve space on the device for the histogram.
@@ -172,7 +167,6 @@ class Probabilistic:
 
         # Transfer the seeds to the buffer.
         array = tg.seeds.to_array(seeds).astype(np.float32)
-        array = np.c_[array[:, :3], self._ones, array[:, 3:], self._zeros]
         events.append(cl.copy_to_buffer(self._seeds, array))
 
         # Track streamlines.

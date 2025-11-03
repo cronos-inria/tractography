@@ -19,10 +19,12 @@ class Seed:
     orientation: npt.ArrayLike
 
 
-def from_surface(surface: nimesh.Mesh, n_seeds: int, cone_angle: float = 0) -> list[Seed]:
+def from_surface(
+    surface: nimesh.Mesh, n_seeds: int, cone_angle: float = 0
+) -> list[Seed]:
     """Generate seeds from a surface
 
-    The seeds are generated randomly over the triangles of the
+    The seeds are generated uniformly over the triangles of the
     surface. The orientation of each seed is in a cone centered on
     the normal of the surface.
 
@@ -44,9 +46,16 @@ def from_surface(surface: nimesh.Mesh, n_seeds: int, cone_angle: float = 0) -> l
     # inside that triangle.
     vertices, triangles = surface.vertices, surface.triangles
     triangle_vertices = vertices[triangles]
-    areas = np.linalg.norm(np.cross(
-        triangle_vertices[:, 0] - triangle_vertices[:, 1],
-        triangle_vertices[:, 0] - triangle_vertices[:, 2]), axis=-1) / 2
+    areas = (
+        np.linalg.norm(
+            np.cross(
+                triangle_vertices[:, 0] - triangle_vertices[:, 1],
+                triangle_vertices[:, 0] - triangle_vertices[:, 2],
+            ),
+            axis=-1,
+        )
+        / 2
+    )
     rng = np.random.default_rng()
     indices = rng.choice(len(triangles), size=n_seeds, p=areas / np.sum(areas))
     barycentric = _random_barycentric_coordinates(n_seeds)
@@ -67,8 +76,8 @@ def from_surface(surface: nimesh.Mesh, n_seeds: int, cone_angle: float = 0) -> l
 def from_mask(mask: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
     """Generate seeds from a 3D mask
 
-    The seeds are generated randomly inside voxels with non-zero
-    values in the mask. The orientations are random.
+    The seeds are generated uniformly inside voxels with non-zero
+    values in the mask. The orientations are uniform on the sphere.
 
     Args:
         mask: The numpy array containing the mask.
@@ -91,7 +100,13 @@ def from_mask(mask: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed
     return [Seed(el, n) for el, n in zip(locations, orientations)]
 
 
-def from_fod(fod: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
+def from_fod(
+    fod: npt.NDArray,
+    affine: npt.NDArray,
+    n_seeds: int,
+    as_array: bool = False,
+    use_opencl: bool = True,
+) -> list[Seed] | npt.NDArray:
     """Generate seeds from fibre orientation distributions (FOD)
 
     The seeds are generated uniformly in voxels with non-zero average
@@ -102,39 +117,95 @@ def from_fod(fod: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
         fod: The numpy array containing the FOD.
         affine: The affine transform to native space.
         n_seeds: The number of seeds to generate.
+        as_array: If True, the seeds are returned as a numpy array with a shape of (n_seeds, 8).
+        use_opencl: If True, the seeds will be generated using the OpenCL
+            implementation which can run on GPU.
 
     Return:
         A list of `n_seeds` seeds suitable for tractography
 
     """
 
-    # Get the non-zero voxels.
-    voxels = np.array(list(zip(*np.nonzero(fod[..., 0]))))
-    indices = np.random.randint(len(voxels), size=n_seeds)
-    locations_voxel = voxels[indices] + np.random.rand(n_seeds, 3) - [0.5, 0.5, 0.5]
-    locations = nib.affines.apply_affine(affine, locations_voxel)
+    if use_opencl:
 
-    # Preprare discretization of the ODFs.
-    vertices = tg.core.fibonacci_sphere(1000)
-    azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
-    ishtmtx, _ = tg.core.ishtmtx(azimuths, colatitudes, fod.shape[-1])
+        # Use a sparse format for the FOD.
+        mask = fod[..., 0] > 0
+        indices = np.array(np.nonzero(mask), dtype=np.float32).T
+        indices = np.hstack((indices, np.ones((len(indices), 1)))).astype(np.float32)
+        inline_fod = fod[mask].astype(np.float32)
+        affine = affine.astype(np.float32)
 
-    # Importance sample the ODFs based on the discretization.
-    orientations = []
-    for index in indices:
-        voxel = voxels[index]
-        local = fod[*voxel]
-        values = np.dot(ishtmtx, local)
-        cumsum = np.cumsum(np.maximum(values, 0.0))
-        i = np.searchsorted(cumsum, np.random.rand() * cumsum[-1])
-        orientations.append(vertices[i])
+        randoms = np.random.randint(4294967295, size=(n_seeds, 2)).astype(np.uint32)
 
-    return [Seed(el, n) for el, n in zip(locations, orientations)]
+        fod_buffer = tg.algorithms.opencl.new_read_only_buffer(inline_fod)
+        indices_buffer = tg.algorithms.opencl.new_read_only_buffer(indices)
+        affine_buffer = tg.algorithms.opencl.new_read_only_buffer(affine)
+        randoms_buffer = tg.algorithms.opencl.new_read_only_buffer(randoms)
+        seeds_buffer = tg.algorithms.opencl.new_write_only_buffer(4 * 8 * n_seeds)
+
+        # Compile the OpenCL program that generates seeds.
+        values = {
+            "nnz": len(indices),
+            "n_coefficients": fod.shape[-1],
+            "n_seeds": n_seeds,
+        }
+        program = tg.algorithms.opencl.build_program(values, "seeds.cl")
+
+        program.seeds_from_fod(
+            tg.algorithms.opencl._queue,
+            (n_seeds,),
+            None,
+            fod_buffer,
+            indices_buffer,
+            affine_buffer,
+            randoms_buffer,
+            seeds_buffer,
+        )
+        seeds = np.zeros((n_seeds, 8), np.float32)
+        tg.algorithms.opencl.copy_from_buffer(seeds_buffer, seeds)
+
+        return seeds if as_array else from_array(seeds)
+
+    else:
+        # Get the non-zero voxels.
+        voxels = np.array(list(zip(*np.nonzero(fod[..., 0]))))
+        indices = np.random.randint(len(voxels), size=n_seeds)
+        locations_voxel = voxels[indices] + np.random.rand(n_seeds, 3) - [0.5, 0.5, 0.5]
+        locations = nib.affines.apply_affine(affine, locations_voxel)
+
+        # Preprare discretization of the ODFs.
+        vertices = tg.core.fibonacci_sphere(1000)
+        azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
+        ishtmtx, _ = tg.core.ishtmtx(azimuths, colatitudes, fod.shape[-1])
+
+        # Importance sample the ODFs based on the discretization.
+        orientations = []
+        for index in indices:
+            voxel = voxels[index]
+            local = fod[*voxel]
+            values = np.dot(ishtmtx, local)
+            cumsum = np.cumsum(np.maximum(values, 0.0))
+            i = np.searchsorted(cumsum, np.random.rand() * cumsum[-1])
+            orientations.append(vertices[i])
+
+        if as_array:
+            return np.hstack(
+                (locations, np.ones((n_seeds, 1)), orientations, np.zeros((n_seeds, 1)))
+            )
+        else:
+            return [Seed(el, n) for el, n in zip(locations, orientations)]
 
 
 def to_array(seeds: list[Seed]) -> npt.NDArray:
     """Split seeds into location and orientation"""
-    return np.array([np.hstack((s.location, s.orientation)) for s in seeds])
+    return np.array(
+        [np.hstack((np.r_[s.location, 1.0], np.r_[s.orientation, 0.0])) for s in seeds]
+    )
+
+
+def from_array(array: npt.NDArray) -> list[Seed]:
+    """Create seeds from a numpy array"""
+    return np.array([Seed(a[:3], a[4:7]) for a in array])
 
 
 def save(filename: Path, seeds: list[Seed]):
@@ -197,7 +268,7 @@ def _triangle_normals(vs, ts):
 
 
 def _random_barycentric_coordinates(n):
-    """Generate n random points in a triangle"""
+    """Generate n random points uniformly in a triangle"""
     a, b = np.random.rand(2, n)
     to_update = a + b > 1
     a[to_update] = 1 - a[to_update]
@@ -206,9 +277,9 @@ def _random_barycentric_coordinates(n):
 
 
 def _sample_cone(rng, orientations, angle):
-    """Sample a cone around an orientation"""
+    """Uniformly sample a cone around an orientation"""
 
-    samples = np.zeros((len(orientations),3))
+    samples = np.zeros((len(orientations), 3))
     valid = np.sum(samples * orientations, axis=1) >= np.cos(np.deg2rad(angle))
     while not np.all(valid):
         samples[~valid] = _sample_sphere(rng, np.sum(~valid))
@@ -222,4 +293,6 @@ def _sample_sphere(rng, n_samples):
     u = rng.uniform(size=(2, n_samples))
     phi = 2 * np.pi * u[0]
     theta = np.arccos(1 - 2 * u[1])
-    return np.vstack([np.sin(theta) * np.sin(phi), np.sin(theta) * np.cos(phi), np.cos(theta)]).T
+    return np.vstack(
+        [np.sin(theta) * np.sin(phi), np.sin(theta) * np.cos(phi), np.cos(theta)]
+    ).T

@@ -27,12 +27,21 @@ inline float2 cart2sph(float4 cart) {
     return (float2) (azimuth, colatitude);
 }
 
-inline float3 to_voxel(float4 affine[4], float4 point) {
+inline float3 to_voxel(const float4 affine[4], float4 point) {
 	float3 voxel;
     for (size_t i = 0; i < 3; i++) {
         voxel[i] = dot(affine[i], point);
     }
 	return voxel;
+}
+
+// Applies the affine transport to a point in homogeneous coordinates.
+inline float4 apply_affine(const float4 affine[4], float4 point) {
+	float4 new_point;
+    for (size_t i = 0; i < 4; i++) {
+        new_point[i] = dot(affine[i], point);
+    }
+	return new_point;
 }
 
 inline bool in_image(float3 voxel, uint nx, uint ny, uint nz) {
@@ -56,8 +65,16 @@ inline uint MWC64X(uint2 *state)
     return res;                       // Return the next result
 }
 
+// Returns a float in the range (0, 1) with uniform distribution.
+//
 inline float randu(uint2 *state) {
 	return (float) MWC64X(state) / 4294967295.0f;
+}
+
+// Returns an integer in the range (0, max) with uniform distribution.
+//
+inline uint randi(uint2 *state, uint max) {
+	return (uint) (randu(state) * max);
 }
 
 inline float randn(uint2 *state) {
