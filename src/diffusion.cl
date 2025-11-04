@@ -1,25 +1,4 @@
-#include "spharm.cl"
-
-float4 exps2(float4 p, float4 x, float t) {
-    float n = length(x);
-    if (n == 0)
-        return p;
-
-	float c;
-    float s = sincos(t * n, &c);
-    return c * p + x * (s / n);
-}
-
-float softmax(float x, float k) {
-	if (x * k < 30.0f)
-		return log(1 + exp(k * x)) / k;
-	return x;
-}
-
-
-float dsoftmax(float x, float k) {
-	return 1.0f / (1 + exp(-k * x));
-}
+#include "utils/spharm.cl"
 
 size_t closest_direction_index(
 		__global const float4 directions[162],

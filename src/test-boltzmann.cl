@@ -1,4 +1,4 @@
-#include "core.cl"
+#include "utils/core.cl"
 
 void sample_fod(
 	__global const float fod[3][4][5][6],

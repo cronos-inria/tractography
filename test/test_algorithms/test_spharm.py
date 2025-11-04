@@ -37,7 +37,7 @@ class TestSpharm(unittest.TestCase):
         values_buffer = cl.Buffer(_context, flags, size=values.nbytes)
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "include/spharm.cl")
+        program = tg.algorithms.opencl.build_program(dict(), "utils/spharm.cl")
 
         program.test_ishtmtx(
             _queue,
@@ -75,7 +75,7 @@ class TestSpharm(unittest.TestCase):
         values_buffer = cl.Buffer(_context, flags, size=values.nbytes)
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "include/spharm.cl")
+        program = tg.algorithms.opencl.build_program(dict(), "utils/spharm.cl")
 
         program.test_ishtmtx_dt(
             _queue,
@@ -113,7 +113,7 @@ class TestSpharm(unittest.TestCase):
         values_buffer = cl.Buffer(_context, flags, size=values.nbytes)
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "include/spharm.cl")
+        program = tg.algorithms.opencl.build_program(dict(), "utils/spharm.cl")
 
         program.test_ishtmtx_dp(
             _queue,

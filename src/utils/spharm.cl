@@ -1,4 +1,4 @@
-#include "core.cl"
+#include "utils/core.cl"
 
 // Returns the value of the FOD in the specified direction.
 //

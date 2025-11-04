@@ -13,7 +13,7 @@ _device = _context.devices[0]
 _nb_units = _device.max_compute_units
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
-_OPENCL_INCLUDE = f"-I {_OPENCL_DIR / 'include'}"
+_OPENCL_INCLUDE = f"-I {_OPENCL_DIR}"
 
 
 def new_read_only_buffer(data):

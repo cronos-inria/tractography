@@ -1,4 +1,4 @@
-#include "core.cl"
+#include "utils/core.cl"
 
 float4 pick_orientation(
 		__global const float fod[$nx][$ny][$nz][$n_directions],
