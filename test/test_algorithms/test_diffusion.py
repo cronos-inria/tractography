@@ -14,6 +14,30 @@ _TEST_RESULTS_DIR = (
 )
 
 
+class TestDiffusionHistogram(unittest.TestCase):
+
+    def setUp(self):
+        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    def test_cross(self):
+        fod = test.data.cross()
+        fod = tg.utils.normalize_odf(fod)
+        wm = fod[..., 0] > 0
+        affine = np.eye(4)
+        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
+        nib.save(
+            nib.Nifti1Image(wm.astype(np.uint8), affine),
+            _TEST_RESULTS_DIR / "histogram-cross-wm.nii.gz",
+        )
+        nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz")
+
+        histogram = tg.algorithms.diffusion.histrogram(fod, affine, fod, affine, 10000, config)
+        nib.save(nib.Nifti1Image(histogram, affine), _TEST_RESULTS_DIR / "histogram-cross-histogram.nii.gz")
+
+        # The histogram and the FOD should be very similar.
+        self.assertTrue(np.linalg.norm(histogram - fod) / wm.size < 0.005)
+
+
 class TestDiffusion(unittest.TestCase):
     """Test the OpenCL implementation of Diffusion tractography"""
 
@@ -71,7 +95,6 @@ class TestDiffusion(unittest.TestCase):
         radius = 2
         fod = test.data.circle(shape=shape, radius=radius)
         affine = np.eye(4)
-        affine[:3, 3] = -0.5
         nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "circle-fod.nii.gz")
         wm = fod[..., 0] > 0
         nib.save(

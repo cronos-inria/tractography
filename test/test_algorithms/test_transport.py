@@ -79,7 +79,6 @@ class TestTransport(unittest.TestCase):
         radius = 2
         fod = test.data.circle(shape=shape, radius=radius)
         affine = np.eye(4)
-        affine[:3, 3] = -0.5
         nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "circle-fod.nii.gz")
         wm = fod[..., 0] > 0
         nib.save(

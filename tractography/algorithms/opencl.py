@@ -23,11 +23,22 @@ def new_read_only_buffer(data):
     return buffer
 
 
-def build_program(values, name):
+def new_buffer(data):
+    """Create a new read and write OpenCL buffer from data"""
+    buffer = cl.Buffer(_context, cl.mem_flags.READ_WRITE, size=data.nbytes)
+    cl.enqueue_copy(_queue, buffer, np.ascontiguousarray(data), is_blocking=False)
+    return buffer
 
-    # Compile the OpenCL program that implements tractography.
-    with open(_OPENCL_DIR / name) as f:
-        kernel = f.read()
+
+def build_program(values, names):
+
+    if isinstance(names, str):
+        names = [names]
+
+    kernel = ""
+    for name in names:
+        with open(_OPENCL_DIR / name) as f:
+            kernel += f.read()
     template = Template(kernel)
 
     # Set constants in the OpenCL code.
