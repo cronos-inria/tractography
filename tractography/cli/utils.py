@@ -55,7 +55,7 @@ def set_tractography_config(
         config.step_size = kwargs["step_size"]
 
     if "max_angle" in kwargs and kwargs["max_angle"] is not None:
-        config.max_angle = kwargs["max_angle"]
+        config.maximum_angle = kwargs["max_angle"]
 
     if "min_length" in kwargs and kwargs["min_length"] is not None:
         config.streamline.length.minimum = kwargs["min_length"]

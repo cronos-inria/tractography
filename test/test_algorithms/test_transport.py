@@ -31,10 +31,18 @@ class TestTransportHistogram(unittest.TestCase):
             nib.Nifti1Image(wm.astype(np.uint8), affine),
             _TEST_RESULTS_DIR / "histogram-cross-wm.nii.gz",
         )
-        nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz")
+        nib.save(
+            nib.Nifti1Image(fod, affine),
+            _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz",
+        )
 
-        histogram = tg.algorithms.transport.histrogram(fod, affine, fod, affine, 10000, config)
-        nib.save(nib.Nifti1Image(histogram, affine), _TEST_RESULTS_DIR / "histogram-cross-histogram.nii.gz")
+        histogram = tg.algorithms.transport.histogram(
+            fod, affine, fod, affine, 10000, config
+        )
+        nib.save(
+            nib.Nifti1Image(histogram, affine),
+            _TEST_RESULTS_DIR / "histogram-cross-histogram.nii.gz",
+        )
 
         # The histogram and the FOD should be very similar. The value of 0.5 is
         # arbitrary.

@@ -18,7 +18,7 @@ class Configuration(BaseConfiguration):
         return super().load(Algorithm.DETERMINISTIC)
 
 
-def histrogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
+def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     """Generate a streamline histogram
 
     The histogram correponds to the FOD associated to a particular tracgogram. That is,
@@ -63,7 +63,7 @@ def histrogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     seed_fod_buffer = cl.new_read_only_buffer(inline_fod.astype(np.float32))
     seed_fod_voxels_buffer = cl.new_read_only_buffer(voxels.astype(np.float32))
     seed_fod_affine_buffer = cl.new_read_only_buffer(seed_fod_affine.astype(np.float32))
-    randoms_buffer = cl.new_read_only_buffer(randoms.astype(np.uint32))
+    randoms_buffer = cl.new_buffer(randoms.astype(np.uint32))
 
     hist = np.zeros(fod.shape, dtype=np.float32)
     hist_buffer = cl.new_buffer(hist)

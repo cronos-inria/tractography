@@ -9,7 +9,7 @@ DESCRIPTION = """\
 """
 
 
-def parse_arguments():
+def parse_arguments(args: str | None = None):
 
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     subparsers = parser.add_subparsers()
@@ -25,12 +25,12 @@ def parse_arguments():
         if "add_parser" in module.__dict__:
             module.add_parser(subparsers)
 
-    return parser.parse_args()
+    return parser.parse_args(args)
 
 
-def main():
+def main(args: argparse.Namespace | None = None):
 
-    args = parse_arguments()
+    args = parse_arguments() if args is None else args
     parameters = {
         k: v
         for k, v in vars(args).items()
