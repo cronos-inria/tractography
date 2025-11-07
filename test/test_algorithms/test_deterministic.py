@@ -34,8 +34,8 @@ class TestDeterministicHistogram(unittest.TestCase):
             _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz",
         )
 
-        histogram = tg.algorithms.deterministic.histrogram(
-            fod, affine, fod, affine, 100000, config
+        histogram = tg.algorithms.deterministic.histogram(
+            fod, affine, fod, affine, 10000, config
         )
         nib.save(
             nib.Nifti1Image(histogram, affine),

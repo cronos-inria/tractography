@@ -99,9 +99,12 @@ __kernel void histogram(
 			sp = sincos(angles.x, &cp);
 			st = sincos(angles.y, &ct);
 
+			// Define the tangent plane. There is no sin(theta) in ep
+			// because it cancels with the 1/sin(theta) of the derivative.
 			float4 et = {ct * cp, ct * sp, -st, 0.0f};
 			float4 ep = {-sp, cp, 0.0f, 0.0f};
 			
+			// No 1/sin(theta) factor, see comment above.
 			float4 drift = (fod_colatitude_value * et + fod_azimuth_value * ep) / fod_value;
 			float4 noise = randn(&state) * et + randn(&state) * ep;
 

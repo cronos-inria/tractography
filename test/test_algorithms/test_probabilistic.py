@@ -34,8 +34,8 @@ class TestProbabilisticHistogram(unittest.TestCase):
             _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz",
         )
 
-        histogram = tg.algorithms.probabilistic.histrogram(
-            fod, affine, fod, affine, 100000, config
+        histogram = tg.algorithms.probabilistic.histogram(
+            fod, affine, fod, affine, 10000, config
         )
         nib.save(
             nib.Nifti1Image(histogram, affine),
