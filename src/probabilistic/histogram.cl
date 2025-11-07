@@ -25,9 +25,12 @@ float4 pick_orientation(
 {
 
 	// Find the valid orientations.
-	float sum = 0;
+	float sum = 0.0f;
 	for (size_t i = 0; i < $n_directions; i++) {
 		sum += fod_values[index.x][index.y][index.z][i] * (dot(directions[i], orientation) > max_angle);
+	}
+	if (sum <= 0.0f) {
+		return (float4) 0; // Nowhere to go.
 	}
 
 	// Pick a random direction according to the shape of the FOD.
@@ -116,13 +119,13 @@ __kernel void histogram(
 			if (!in_image(voxel, $nx, $ny, $nz)) {
 				break;
 			}
-			if (fod_values[index.x][index.y][index.z][0] <= 0.0f) {
-				break;
-			}
 
-			// Pick the next direction.	
+			// Pick the next direction. If the orientation is 0, there is nowhere to go.
 			float rand = randu(&state);
 			orientation = pick_orientation(fod_values, directions, orientation, index, rand, max_angle);
+			if (length(orientation) < 0.5f) {
+				break;
+			}
 
 			// Move the point forwared and add it to the streamline.
 			location += dt * orientation;

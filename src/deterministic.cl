@@ -11,7 +11,7 @@ float4 pick_orientation(
 	uint3 index = to_index(voxel);
 
 	// Pick the valid direction with max value.
-	float4 current_orientation = 0;
+	float4 current_orientation = {0.0f, 0.0f, 0.0f, 0.0f};
 	float current_max = 0.0;
 	for (size_t i = 0; i < $n_directions; i++) {
 		if (dot(vertices[i], orientation) < max_angle) {
@@ -59,10 +59,8 @@ __kernel void tractography(
 			break;
 		}
 
-		// Pick the next direction.	
+		// Pick the next direction. If the orientation is 0, there is nowhere to go.
 		orientation = pick_orientation(fod, vertices, orientation, voxel, max_angle);
-
-        // If the orientation is 0, there is nowhere to go.
         if (length(orientation) < 0.5) {
             break;
         }

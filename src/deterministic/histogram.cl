@@ -23,8 +23,8 @@ float4 pick_orientation(
 		float max_angle)
 {
 	// Pick the valid direction with max value.
-	float4 current_orientation = 0;
-	float current_max = 0.0;
+	float4 current_orientation = {0.0f, 0.0f, 0.0f, 0.0f};
+	float current_max = 0.0f;
 	for (size_t i = 0; i < $n_directions; i++) {
 		if (dot(vertices[i], orientation) < max_angle) {
 			continue;
@@ -110,16 +110,16 @@ __kernel void histogram(
 				}
 			}
 
-			// Check if we are still in the image and have an fODF.
+			// Check if we are still in the image.
 			if (!in_image(voxel, $nx, $ny, $nz)) {
 				break;
 			}
-			if (fod_values[index.x][index.y][index.z][0] <= 0.0f) {
+
+			// Pick the next direction. If the orientation is 0, there is nowhere to go.
+			orientation = pick_orientation(fod_values, directions, orientation, index, max_angle);
+			if (length(orientation) < 0.5) {
 				break;
 			}
-
-			// Pick the next direction.	
-			orientation = pick_orientation(fod_values, directions, orientation, index, max_angle);
 
 			// Move the point forwared and add it to the streamline.
 			location += dt * orientation;
