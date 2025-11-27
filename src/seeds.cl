@@ -1,3 +1,6 @@
+#ifndef __SEEDS__
+#define __SEEDS__
+
 #include "utils/spharm.cl"
 
 #define N_DIRECTIONS 600
@@ -103,3 +106,5 @@ __kernel void seeds_from_fod(
 	seeds[gid][1] = orientation;
 	states[gid] = state;
 }
+
+#endif
