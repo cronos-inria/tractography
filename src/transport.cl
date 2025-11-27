@@ -1,4 +1,4 @@
-#include "spharm.cl"
+#include "utils/spharm.cl"
 
 __kernel void tractography(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],

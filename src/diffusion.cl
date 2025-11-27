@@ -1,4 +1,4 @@
-#include "spharm.cl"
+#include "utils/spharm.cl"
 
 size_t closest_direction_index(
 		__global const float4 directions[162],

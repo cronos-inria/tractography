@@ -1,4 +1,4 @@
-#include "spharm.cl"
+#include "utils/spharm.cl"
 
 #define N_DIRECTIONS 600
 

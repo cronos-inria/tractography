@@ -1,4 +1,7 @@
-#include "core.cl"
+#ifndef __UTILS_SPHARM__
+#define __UTILS_SPHARM__
+
+#include "utils/core.cl"
 
 // Returns the value of the FOD in the specified direction.
 //
@@ -356,3 +359,5 @@ __kernel void test_ishtmtx_dt(
 		}
 	}
 }
+
+#endif
