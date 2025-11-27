@@ -19,6 +19,70 @@ class Configuration(BaseConfiguration):
         return super().load(Algorithm.TRANSPORT)
 
 
+def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
+    """Generate a streamline histogram
+
+    The histogram correponds to the FOD associated to a particular tracgogram. That is,
+    the distribution of streamline orientations, for each voxel. This function
+    generates the histogram directly, without saving the intermediate streamlines and
+    therefore allows a much larger number of seeds to be used.
+
+    """
+
+    # Determine the number of seeds per thread. We want 1k threads.
+    n_threads = 1000
+    n_seeds_per_thread = np.ceil(n_seeds / n_threads)
+
+    # Prepare the data necessary for the seeds.
+    mask = seed_fod[..., 0] > 0
+    voxels = np.array(np.nonzero(mask), dtype=np.float32).T
+    voxels = np.hstack((voxels, np.ones((len(voxels), 1))))
+    inline_fod = fod[mask]
+    randoms = np.random.randint(4294967295, size=(n_threads, 2))
+
+    # Send the data to the device.
+    fod_buffer = cl.new_read_only_buffer(fod.astype(np.float32))
+    fod_inverse_affine_buffer = cl.new_read_only_buffer(np.linalg.inv(fod_affine).astype(np.float32))
+    seed_fod_buffer = cl.new_read_only_buffer(inline_fod.astype(np.float32))
+    seed_fod_voxels_buffer = cl.new_read_only_buffer(voxels.astype(np.float32))
+    seed_fod_affine_buffer = cl.new_read_only_buffer(seed_fod_affine.astype(np.float32))
+    randoms_buffer = cl.new_buffer(randoms.astype(np.uint32))
+
+    hist = np.zeros(fod.shape, dtype=np.float32)
+    hist_buffer = cl.new_buffer(hist)
+
+    # Set constants in the OpenCL code.
+    values = {
+        "nx": fod.shape[0],
+        "ny": fod.shape[1],
+        "nz": fod.shape[2],
+        "nnz": len(voxels),
+        "n_coefficients": fod.shape[-1],
+        "n_steps": config.n_steps,
+        "n_seeds": n_threads,
+    }
+    program = cl.build_program(values, ["utils/seeds.cl", "transport/histogram.cl"])
+
+    args = (
+        fod_buffer,
+        fod_inverse_affine_buffer,
+        seed_fod_buffer,
+        seed_fod_voxels_buffer,
+        seed_fod_affine_buffer,
+        randoms_buffer,
+        np.float32(config.step_size),
+        np.float32(config.save_at),
+        np.float32(config.inverse_curvature),
+        np.uint32(n_seeds_per_thread),
+        hist_buffer,
+    )
+    cl.run_histogram(program, args, n_threads)
+    cl.copy_from_buffer(hist_buffer, hist)
+
+    hist = tg.utils.normalize_odf(hist)
+    return hist
+
+
 class Transport:
 
     def __init__(self, odf, affine, n_streamlines, config):
