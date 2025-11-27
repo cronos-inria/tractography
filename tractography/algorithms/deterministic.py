@@ -81,10 +81,6 @@ class Deterministic:
         # Reserve space for the length of the streamlines on the device.
         self._lengths = cl.new_write_only_buffer(n_streamlines * 4)
 
-        # Fill columns for seeds.
-        self._zeros = np.zeros(self._n_streamlines, dtype=np.float32)
-        self._ones = np.ones(self._n_streamlines, dtype=np.float32)
-
         # Build the OpenCL program that implements tractography.
         values = {
             "nx": odf.shape[0],
@@ -112,11 +108,10 @@ class Deterministic:
 
         # Transfer the seeds to the buffer.
         array = tg.seeds.to_array(seeds).astype(np.float32)
-        array = np.c_[array[:, :3], self._ones, array[:, 3:], self._zeros]
         cl.copy_to_buffer(self._seeds, array)
 
         # Track streamlines.
-        max_angle = self._config.algorithms.deterministic.maximum_angle
+        max_angle = self._config.maximum_angle
         args = (
             self._values,
             self._iaffine,
