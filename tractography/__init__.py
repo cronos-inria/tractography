@@ -1,6 +1,7 @@
 from . import algorithms, configuration, connectivity, core, seeds, utils
 from .algorithms.configuration import Algorithm, BaseConfiguration
 
+import nibabel as nib
 import numpy as np
 
 
@@ -56,24 +57,49 @@ def connectome(
 
 
 def histogram(
-    data,
-    affine,
-    seeds: list[seeds.Seed],
+    fod: nib.Nifti1Image,
+    seed_mask: nib.Nifti1Image,
+    n_seeds: int = 1000000,
     config: BaseConfiguration | None = None,
-):
+) -> nib.Nifti1Image:
+    """Generates the streamlines histogram
+
+    The histogram correponds to the FOD associated to a particular tracgogram. That is,
+    the distribution of streamline orientations, for each voxel. This function
+    generates the histogram directly, without saving the intermediate streamlines and
+    therefore allows a much larger number of seeds to be used.
+
+    Args:
+        fod: The FOD used to generate the streamlines.
+        seed_mask: The mask where seeds are generated. They are uniforly distributed
+            in the non-zero voxels of the mask and the orientation distribution follows
+            the local FOD (see tg.seed.from_fod).
+        n_seeds: The number of seeds (streamlines) to generate.
+        config: The configuration. If None, the default configuration for the
+            diffusion algorithm is used.
+
+    Return:
+        The histogram in the form of FOD.
+
+    """
 
     if config is None:
-        config = configuration.load(Algorithm.TRANSPORT)
+        config = configuration.load(Algorithm.DIFFUSION)
 
-    implementation = config.implementation(data, affine, config.batch_size, config)
+    # Apply the mask to the FOD to get the seeding FOD.
+    fod_data = fod.get_fdata()
+    seed_mask_data = seed_mask.get_fdata()
+    seed_fod_data = core.apply_mask(
+        fod_data, fod.affine, seed_mask_data, seed_mask.affine
+    )
 
-    # Construct histogram in batches.
-    histogram = 0
-    for s in np.array_split(seeds, len(seeds) // config.batch_size):
-        batch_histogram, bin_centers = implementation.histogram(s)
-        histogram = histogram + batch_histogram
+    # Load the implementation based on the config file.
+    implementation = getattr(algorithms, config.algorithm.value).histogram
+    histogram = implementation(
+        fod_data, fod.affine, seed_fod_data, seed_mask.affine, n_seeds, config
+    )
 
-    return histogram, bin_centers
+    return nib.Nifti1Image(histogram, fod.affine)
 
 
 def tractogram(

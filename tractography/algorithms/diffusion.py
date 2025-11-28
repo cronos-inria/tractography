@@ -134,52 +134,6 @@ class Diffusion:
         }
         self._program = cl.build_program(values, "diffusion.cl")
 
-    def histogram(self, seeds):
-
-        # Transfer the seeds to the buffer.
-        array = tg.seeds.to_array(seeds).astype(np.float32)
-        array = np.c_[array[:, :3], self._ones, array[:, 3:], self._zeros]
-        cl.copy_to_buffer(self._seeds, array)
-
-        # Reserve space on the device for the histogram.
-        hist_nbytes = np.prod(self._odf_shape[:3]) * 162 * 4
-        hist_buffer = cl.new_write_only_buffer(hist_nbytes)
-
-        # Reserve space for the bin centers.
-        mesh = trimesh.creation.icosphere(2)
-        bin_areas = np.zeros(len(mesh.vertices))
-        for i, indices in enumerate(mesh.vertex_faces):
-            for index in indices:
-                if index != -1:
-                    bin_areas[i] += mesh.area_faces[index] / 3
-        bin_centers = mesh.vertices / np.linalg.norm(
-            mesh.vertices, axis=1, keepdims=True
-        )
-        bin_centers = np.c_[bin_centers, np.zeros((162, 1))].astype(np.float32)
-        bin_centers_buffer = cl.new_read_only_buffer(bin_centers)
-
-        args = (
-            self._odf,
-            self._iaffine,
-            self._seeds,
-            self._randoms,
-            bin_centers_buffer,
-            np.float32(self._config.step_size),
-            np.float32(self._config.save_at),
-            np.float32(self._config.inverse_curvature),
-            hist_buffer,
-        )
-        cl.run_histogram(self._program, args, self._n_streamlines)
-        hist = np.zeros(self._odf_shape[:3] + (162,), dtype=np.uint32)
-        cl.copy_from_buffer(hist_buffer, hist)
-
-        # Normalize the histogram.
-        hist = hist / np.expand_dims(bin_areas, axis=(0, 1, 2))
-        hist_norm = np.linalg.norm(hist, axis=-1, keepdims=True)
-        np.divide(hist, hist_norm, where=hist_norm != 0, out=hist)
-
-        return hist, bin_centers[:, :3]
-
     def run(self, seeds):
 
         # Transfer the seeds to the buffer.

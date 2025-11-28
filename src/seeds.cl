@@ -35,7 +35,7 @@ float4 sample_fod(
 	// Evaluate the FOD over the provided directions.
 	float values[N_DIRECTIONS];
 	for (size_t n = 0; n < N_DIRECTIONS; n++) {
-		values[n] = shval(fod, directions[n]);
+		values[n] = max(shval(fod, directions[n]), 0.0f);
 	}
 
 	// Find the valid orientations.

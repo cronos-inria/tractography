@@ -13,104 +13,86 @@ import numpy as np
 import tractography as tg
 
 
+_N_SEEDS = 1000000
+_ALGORITHM = tg.Algorithm.DIFFUSION
+
+
 _DESCRIPTION = """
 Perform diffusion magnetic resonance imaging tractography but save only the
-histogram (also known has tract-density imaging).
+histogram. The histogram is the probability of streamline orientations for
+each voxel, and therefore has the same representations as fibre orientation
+distributions.
 """
 
 _HELP = """
-generate diffusion MRI tractography histogram (tract-density imaging)
+generate diffusion MRI tractography histogram
 """
 
 
-_ALGORITHM_HELP = """
-the algorithm used for tractography
+_ALGORITHM_HELP = f"""
+the algorithm used for tractography (default is {_ALGORITHM}
 """
 
-_IMAGE_HELP = """
-the filename of the image on which to perform tractography
+_FOD_HELP = """
+the filename of the FOD image on which to perform tractography
 """
 
-_SEEDS_HELP = """
-the seeds used to generate streamlines (1 streamline per seed)
+_SEED_MASK_HELP = """
+the seed mask where the seed will be randomly generated
 """
 
 _HISTOGRAM_HELP = """
 the filename of the generated histogram
 """
 
-_MASK_HELP = """
-the filename of the mask used for tractography
-"""
-
-_SCALE_HELP = """
-the scaling factor to apply to the histogram (2 means 2**3 more voxels)
+_N_SEEDS_HELP = f"""
+the number of seeds to generate (default is {_N_SEEDS})
 """
 
 
 def main(
-    algorithm: tg.Algorithm,
-    image_path: Path,
-    seeds_path: Path,
+    fod_path: Path,
+    seed_mask_path: Path,
     histogram_path: Path,
-    scale: int,
+    algorithm: tg.Algorithm = tg.Algorithm.DIFFUSION,
+    n_seeds: int = _N_SEEDS,
     **kwargs,
 ):
     """Entry-point of the tractography CLI"""
 
     # Load the default config and set user parameters.
-    config = tg.configuration.load()
+    config = tg.configuration.load(algorithm)
     tg.cli.utils.set_tractography_config(config, kwargs)
 
-    # Load the seeds from the provided file.
-    seeds = tg.seeds.load(seeds_path)
+    # Load the seed mask and the FOD.
+    seed_mask = nib.load(seed_mask_path)
+    fod = nib.load(fod_path)
 
-    # Load the FOD image.
-    nii = nib.load(image_path)
-    data = nii.get_fdata()
-
-    # Create the mask from the segmentation and apply it to the data.
-    if "mask" in kwargs and kwargs["mask"] is not None:
-        mask_nii = nib.load(kwargs["mask"])
-        mask = mask_nii.get_fdata()
-        data = tg.core.apply_mask(data, nii.affine, mask, mask_nii.affine)
-
-    # Compute the affine to go back to voxel space in the histogram.
-    affine_scale = np.eye(4)
-    affine_scale[(0, 1, 2), (0, 1, 2)] = 1 / scale
-    new_affine = np.dot(nii.affine, affine_scale)
-    inverse_affine = np.linalg.inv(new_affine)
-
-    # Reserve memory for the resulting image.
-    histogram = np.zeros([n * scale for n in data.shape[:3]], dtype=np.uint32)
-
-    # Because the number of seeds can be enormeous, we split them into batches.
-    n_splits = len(seeds) // tg.BATCH_SIZE
-    for subseeds in np.array_split(seeds, n_splits):
-
-        streamlines = tg.tractogram(data, nii.affine, subseeds, algorithm, config)
-
-        # Add the streamlines to the histogram.
-        points = np.vstack(streamlines)
-        voxels = nib.affines.apply_affine(inverse_affine, points).astype(int)
-        for voxel in voxels:
-            histogram[*voxel] += 1
-
-    # Save the histogram.
-    nib.save(nib.Nifti1Image(histogram, new_affine), histogram_path)
+    histogram = tg.histogram(fod, seed_mask, n_seeds, config)
+    nib.save(histogram, histogram_path)
 
 
 def add_parser(subparsers):
-    """Add the surparser for the mask subcommand"""
+    """Add the surparser for the histogram subcommand"""
     subparser = subparsers.add_parser("histogram", description=_DESCRIPTION, help=_HELP)
-    subparser.add_argument(
-        "algorithm", type=tg.Algorithm, choices=list(tg.Algorithm), help=_ALGORITHM_HELP
-    )
-    subparser.add_argument("image_path", type=Path, help=_IMAGE_HELP)
-    subparser.add_argument("seeds_path", type=Path, help=_SEEDS_HELP)
+    subparser.add_argument("fod_path", type=Path, help=_FOD_HELP)
+    subparser.add_argument("seed_mask_path", type=Path, help=_SEED_MASK_HELP)
     subparser.add_argument("histogram_path", type=Path, help=_HISTOGRAM_HELP)
-    subparser.add_argument("--mask", type=Path, help=_MASK_HELP)
-    subparser.add_argument("--scale", type=int, default=2, help=_SCALE_HELP)
+    subparser.add_argument(
+        "--number-of-seeds",
+        "-n",
+        dest="n_seeds",
+        type=np.uint64,
+        default=_N_SEEDS,
+        help=_N_SEEDS_HELP,
+    )
+    subparser.add_argument(
+        "--algorithm",
+        type=tg.Algorithm,
+        default=_ALGORITHM,
+        choices=list(tg.Algorithm),
+        help=_ALGORITHM_HELP,
+    )
 
     # Add the common configuration options.
     tg.cli.utils.add_tractography_config(subparser)
