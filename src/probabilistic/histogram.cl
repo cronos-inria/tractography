@@ -18,17 +18,47 @@ inline void atomic_add_global_float(__global float *global_val, float local_val)
                             old.int_val, newval.int_val) != old.int_val);
 }
 
+float4 pick_orientation(
+		__global const float fod_values[$nx][$ny][$nz][$n_directions],
+		__global const float4 directions[$n_directions],
+		float4 orientation,
+		uint3 index,
+		float rand,
+		float max_angle)
+{
+
+	// Find the valid orientations.
+	float sum = 0.0f;
+	for (size_t i = 0; i < $n_directions; i++) {
+		sum += fod_values[index.x][index.y][index.z][i] * (dot(directions[i], orientation) > max_angle);
+	}
+	if (sum <= 0.0f) {
+		return (float4) 0; // Nowhere to go.
+	}
+
+	// Pick a random direction according to the shape of the FOD.
+	float cs = 0;
+	for (size_t i = 0; i < $n_directions; i++) {
+		cs += fod_values[index.x][index.y][index.z][i] * (dot(directions[i], orientation) > max_angle);
+		if (cs > rand * sum) {
+			return directions[i];
+		}
+	}
+
+	return (float4) 0; // Should never happen.
+}
+
 __kernel void histogram(
-        __global const float fod[$nx][$ny][$nz][$n_coefficients],
+        __global const float fod_values[$nx][$ny][$nz][$n_directions],
         __global const float4 fod_inverse_affine[4],
+        __global const float4 directions[$n_directions],
         __global const float seed_fod[$nnz][$n_coefficients],
         __global const float4 seed_fod_voxels[$nnz],
         __global const float4 seed_fod_affine[4],
         __global uint2 randoms[$n_seeds],
         float dt,
 		float save_at,
-		float gamma,
-		float noise_variance,
+		float max_angle,
 		uint seeds_per_thread,
         __global float hist[$nx][$ny][$nz][$n_coefficients])
 {
@@ -36,10 +66,21 @@ __kernel void histogram(
 	if (gid >= $n_seeds) return;
 
 	uint2 state = randoms[gid];
-	float4 local_fod_inverse_affine[4] = {fod_inverse_affine[0], fod_inverse_affine[1], fod_inverse_affine[2], fod_inverse_affine[3]};
-	float4 local_seed_fod_affine[4] = {seed_fod_affine[0], seed_fod_affine[1], seed_fod_affine[2], seed_fod_affine[3]};
+	float4 local_fod_inverse_affine[4] = {
+		fod_inverse_affine[0],
+		fod_inverse_affine[1],
+		fod_inverse_affine[2],
+		fod_inverse_affine[3]
+	};
+	float4 local_seed_fod_affine[4] = {
+		seed_fod_affine[0],
+		seed_fod_affine[1],
+		seed_fod_affine[2],
+		seed_fod_affine[3]
+	};
 
 	for (size_t j = 0; j < seeds_per_thread; j++) {
+
 		// Generate the seed.
 		float4 location;
 		float4 orientation;
@@ -48,15 +89,17 @@ __kernel void histogram(
 		float ylm[$n_coefficients];
 		float ylm_dt[$n_coefficients];
 		float ylm_dp[$n_coefficients]; 
-		size_t n = 1;
-		float time = 0;
-		uint3 previous_index = {0, 0, 0};
-		uint3 index = {0, 0, 0};
 		float coefficients[$n_coefficients] = {0};
+		float3 voxel = to_voxel(local_fod_inverse_affine, location);
+		uint3 previous_index = {0, 0, 0};
+		uint3 index = to_index(voxel);
+
+		float time = 0;
+		size_t n = 1;
 		while (n < $n_steps) {
 
 			// Go back to voxel space.
-			float3 voxel = to_voxel(local_fod_inverse_affine, location);
+			voxel = to_voxel(local_fod_inverse_affine, location);
 			previous_index = index;
 			index = to_index(voxel);
 
@@ -82,43 +125,17 @@ __kernel void histogram(
 			if (!in_image(voxel, $nx, $ny, $nz)) {
 				break;
 			}
-			if (fod[index.x][index.y][index.z][0] <= 0.0f) {
+
+			// Pick the next direction. If the orientation is 0, there is nowhere to go.
+			float rand = randu(&state);
+			orientation = pick_orientation(fod_values, directions, orientation, index, rand, max_angle);
+			if (length(orientation) < 0.5f) {
 				break;
 			}
 
-			// Evaluate the value of the fODF and its derivatives.	
-			float fod_value = 0.0f;
-			float fod_colatitude_value = 0.0f;
-			float fod_azimuth_value = 0.0f;
-			for (size_t i = 0; i < $n_coefficients; i++) {
-				fod_value += fod[index.x][index.y][index.z][i] * ylm[i];
-				fod_colatitude_value += fod[index.x][index.y][index.z][i] * ylm_dt[i];
-				fod_azimuth_value += fod[index.x][index.y][index.z][i] * ylm_dp[i];
-			}
-			float d = dsoftmax(fod_value, 100.0f);
-			fod_value = softmax(fod_value, 100.0f);
-			fod_colatitude_value *= d;
-			fod_azimuth_value *= d;
-
-			float st, ct, sp, cp;
-			sp = sincos(angles.x, &cp);
-			st = sincos(angles.y, &ct);
-
-			// Define the tangent plane. There is no sin(theta) in ep
-			// because it cancels with the 1/sin(theta) of the derivative.
-			float4 et = {ct * cp, ct * sp, -st, 0.0f};
-			float4 ep = {-sp, cp, 0.0f, 0.0f};
-			
-			// No 1/sin(theta) factor, see comment above.
-			float4 drift = (fod_colatitude_value * et + fod_azimuth_value * ep) / fod_value;
-			float4 noise = randn(&state) * et + randn(&state) * ep;
-
-			float4 tangent = (gamma * dt) * drift + sqrt(noise_variance * gamma * dt) * noise;
-			orientation = exps2(orientation, tangent, 1.0f);
-
 			// Move the point forwared and add it to the streamline.
 			location += dt * orientation;
-
+			
 			// Move time forward and record point if necessary.
 			time += dt;
 			if (time >= save_at) {

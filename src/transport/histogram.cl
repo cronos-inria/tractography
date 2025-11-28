@@ -32,6 +32,8 @@ __kernel void histogram(
         __global float hist[$nx][$ny][$nz][$n_coefficients])
 {
     uint gid = get_global_id(0);
+	if (gid >= $n_seeds) return;
+
 	uint2 state = randoms[gid];
 	float4 local_fod_inverse_affine[4] = {fod_inverse_affine[0], fod_inverse_affine[1], fod_inverse_affine[2], fod_inverse_affine[3]};
 	float4 local_seed_fod_affine[4] = {seed_fod_affine[0], seed_fod_affine[1], seed_fod_affine[2], seed_fod_affine[3]};
