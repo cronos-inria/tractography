@@ -69,7 +69,7 @@ inline float4 apply_affine(const float4 affine[4], float4 point) {
 }
 
 inline bool in_image(float3 voxel, uint nx, uint ny, uint nz) {
-	return !(voxel.x < -0.5f || voxel.x >= nx - 0.5f || voxel.y < -0.5f || voxel.y >= ny - 0.5f || voxel.z < -0.5f || voxel.z >= nz - 0.5f);
+	return !(voxel.x <= -0.5f || voxel.x >= nx - 0.5f || voxel.y <= -0.5f || voxel.y >= ny - 0.5f || voxel.z <= -0.5f || voxel.z >= nz - 0.5f);
 }
 
 inline uint3 to_index(float3 voxel) {

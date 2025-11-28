@@ -16,37 +16,37 @@ _TEST_RESULTS_DIR = (
 )
 
 
-# class TestTransportHistogram(unittest.TestCase):
-#
-#     def setUp(self):
-#         _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-#
-#     def test_cross(self):
-#         fod = test.data.cross()
-#         fod = tg.utils.normalize_odf(fod)
-#         wm = fod[..., 0] > 0
-#         affine = np.eye(4)
-#         config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-#         nib.save(
-#             nib.Nifti1Image(wm.astype(np.uint8), affine),
-#             _TEST_RESULTS_DIR / "histogram-cross-wm.nii.gz",
-#         )
-#         nib.save(
-#             nib.Nifti1Image(fod, affine),
-#             _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz",
-#         )
-#
-#         histogram = tg.algorithms.transport.histogram(
-#             fod, affine, fod, affine, 10000, config
-#         )
-#         nib.save(
-#             nib.Nifti1Image(histogram, affine),
-#             _TEST_RESULTS_DIR / "histogram-cross-histogram.nii.gz",
-#         )
-#
-#         # The histogram and the FOD should be very similar. The value of 0.5 is
-#         # arbitrary.
-#         self.assertTrue(np.linalg.norm(histogram - fod) / wm.size < 0.5)
+class TestTransportHistogram(unittest.TestCase):
+
+    def setUp(self):
+        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    def test_cross(self):
+        fod = test.data.cross()
+        fod = tg.utils.normalize_odf(fod)
+        wm = fod[..., 0] > 0
+        affine = np.eye(4)
+        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
+        nib.save(
+            nib.Nifti1Image(wm.astype(np.uint8), affine),
+            _TEST_RESULTS_DIR / "histogram-cross-wm.nii.gz",
+        )
+        nib.save(
+            nib.Nifti1Image(fod, affine),
+            _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz",
+        )
+
+        histogram = tg.algorithms.transport.histogram(
+            fod, affine, fod, affine, 10000, config
+        )
+        nib.save(
+            nib.Nifti1Image(histogram, affine),
+            _TEST_RESULTS_DIR / "histogram-cross-histogram.nii.gz",
+        )
+
+        # The histogram and the FOD should be very similar. The value of 0.5 is
+        # arbitrary.
+        self.assertTrue(np.linalg.norm(histogram - fod) / wm.size < 0.5)
 
 
 class TestTransport(unittest.TestCase):
@@ -292,6 +292,7 @@ class TestTransport(unittest.TestCase):
             (x, y, z), fod, method="nearest", bounds_error=False, fill_value=0
         )
 
+        kernel = program.test_sample_fod
         for _ in range(1000):
             voxel[:] = [
                 np.random.rand() * 2,
@@ -301,7 +302,7 @@ class TestTransport(unittest.TestCase):
             cl.enqueue_copy(_queue, voxel_buffer, voxel)
 
             ec = ifod(voxel)[0]
-            program.test_sample_fod(
+            kernel(
                 _queue, (1,), (1,), fod_buffer, voxel_buffer, coefficients_buffer
             )
             cl.enqueue_copy(_queue, coefficients, coefficients_buffer)
@@ -310,7 +311,7 @@ class TestTransport(unittest.TestCase):
         voxel[:] = [-0.2, 0, 0]
         cl.enqueue_copy(_queue, voxel_buffer, voxel)
         ec = ifod(voxel)[0]
-        program.test_sample_fod(
+        kernel(
             _queue, (1,), None, fod_buffer, voxel_buffer, coefficients_buffer
         )
         cl.enqueue_copy(_queue, coefficients, coefficients_buffer)

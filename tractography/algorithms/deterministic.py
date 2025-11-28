@@ -18,6 +18,90 @@ class Configuration(BaseConfiguration):
         return super().load(Algorithm.DETERMINISTIC)
 
 
+def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
+    """Generate a streamline histogram
+
+    The histogram correponds to the FOD associated to a particular tracgogram. That is,
+    the distribution of streamline orientations, for each voxel. This function
+    generates the histogram directly, without saving the intermediate streamlines and
+    therefore allows a much larger number of seeds to be used.
+
+    """
+
+    # Determine the number of seeds per thread. We want 1k threads.
+    n_threads = 1000
+    n_seeds_per_thread = np.ceil(n_seeds / n_threads)
+
+    # Prepare the data necessary for the seeds.
+    mask = seed_fod[..., 0] > 0
+    voxels = np.array(np.nonzero(mask), dtype=np.float32).T
+    voxels = np.hstack((voxels, np.ones((len(voxels), 1))))
+    inline_fod = fod[mask]
+    randoms = np.random.randint(4294967295, size=(n_threads, 2))
+
+    # Generate a set of orientation where the FODs are evaluated. On the
+    # device the vertices are represented as float4.
+    n_directions = 300
+    directions = tg.core.fibonacci_sphere(n_directions)
+    directions_homogeneous = np.c_[directions, np.zeros((n_directions,))]
+
+    # Convert the spherical harmonics to 1D probability mass functions.
+    n_coefficients = fod.shape[-1]
+    azimuths, colatitudes, _ = tg.core.cart2sph(*directions.T)
+    matrix, _ = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
+    fod_values = np.maximum(np.dot(fod.reshape((-1, n_coefficients)), matrix.T), 0)
+    fod_values = fod_values.reshape((*fod.shape[:3], -1))
+
+    # Send the data to the device.
+    fod_values_buffer = cl.new_read_only_buffer(fod_values.astype(np.float32))
+    fod_inverse_affine_buffer = cl.new_read_only_buffer(
+        np.linalg.inv(fod_affine).astype(np.float32)
+    )
+    directions_buffer = cl.new_read_only_buffer(
+        directions_homogeneous.astype(np.float32)
+    )
+    seed_fod_buffer = cl.new_read_only_buffer(inline_fod.astype(np.float32))
+    seed_fod_voxels_buffer = cl.new_read_only_buffer(voxels.astype(np.float32))
+    seed_fod_affine_buffer = cl.new_read_only_buffer(seed_fod_affine.astype(np.float32))
+    randoms_buffer = cl.new_buffer(randoms.astype(np.uint32))
+
+    hist = np.zeros(fod.shape, dtype=np.float32)
+    hist_buffer = cl.new_buffer(hist)
+
+    # Set constants in the OpenCL code.
+    values = {
+        "nx": fod.shape[0],
+        "ny": fod.shape[1],
+        "nz": fod.shape[2],
+        "nnz": len(voxels),
+        "n_coefficients": fod.shape[-1],
+        "n_steps": config.n_steps,
+        "n_directions": n_directions,
+        "n_seeds": n_threads,
+    }
+    program = cl.build_program(values, ["seeds.cl", "deterministic/histogram.cl"])
+
+    args = (
+        fod_values_buffer,
+        fod_inverse_affine_buffer,
+        directions_buffer,
+        seed_fod_buffer,
+        seed_fod_voxels_buffer,
+        seed_fod_affine_buffer,
+        randoms_buffer,
+        np.float32(config.step_size),
+        np.float32(config.save_at),
+        np.float32(np.cos(np.deg2rad(config.maximum_angle))),
+        np.uint32(n_seeds_per_thread),
+        hist_buffer,
+    )
+    cl.run_histogram(program, args, n_threads)
+    cl.copy_from_buffer(hist_buffer, hist)
+
+    hist = tg.utils.normalize_odf(hist)
+    return hist
+
+
 class Deterministic:
     """OpenCL implementation of deterministic tractography
 
@@ -80,6 +164,10 @@ class Deterministic:
 
         # Reserve space for the length of the streamlines on the device.
         self._lengths = cl.new_write_only_buffer(n_streamlines * 4)
+
+        # Fill columns for seeds.
+        self._zeros = np.zeros(self._n_streamlines, dtype=np.float32)
+        self._ones = np.ones(self._n_streamlines, dtype=np.float32)
 
         # Build the OpenCL program that implements tractography.
         values = {
