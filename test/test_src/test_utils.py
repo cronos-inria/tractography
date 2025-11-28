@@ -6,9 +6,53 @@ import pyopencl as cl
 
 import tractography as tg
 
-
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
 _DATA_DIR = Path(__file__).parents[1] / "data"
+
+
+class TestCore(unittest.TestCase):
+    """Test the OpenCL implementation of core functions"""
+
+    def test_randu(self):
+        """Test OpenCL generation of uniform floats"""
+
+        # Compile the OpenCL program that implements Boltzmann tractography.
+        program = tg.algorithms.opencl.build_program(dict(), "utils/core.cl")
+
+        n_values = 1000000
+        values = np.zeros((n_values,), dtype=np.float32)
+        values_buffer = tg.algorithms.opencl.new_write_only_buffer(values.nbytes)
+        program.randus(
+            tg.algorithms.opencl._queue,
+            (1,),
+            None,
+            values_buffer,
+            np.uint32(n_values),
+        )
+        tg.algorithms.opencl.copy_from_buffer(values_buffer, values)
+        self.assertTrue(values.min() > 0)
+        self.assertTrue(values.max() < 1)
+
+    def test_randi(self):
+        """Test OpenCL generation of uniform integers"""
+
+        # Compile the OpenCL program that implements Boltzmann tractography.
+        program = tg.algorithms.opencl.build_program(dict(), "utils/core.cl")
+
+        n_values = 1000000
+        values = np.zeros((n_values,), dtype=np.uint32)
+        values_buffer = tg.algorithms.opencl.new_write_only_buffer(values.nbytes)
+        program.randis(
+            tg.algorithms.opencl._queue,
+            (1,),
+            None,
+            values_buffer,
+            np.uint32(n_values),
+            np.uint32(100),
+        )
+        tg.algorithms.opencl.copy_from_buffer(values_buffer, values)
+        self.assertTrue(values.min() >= 0)
+        self.assertTrue(values.max() <= 99)
 
 
 class TestSpharm(unittest.TestCase):
