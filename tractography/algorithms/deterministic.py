@@ -178,7 +178,7 @@ class Deterministic:
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
-        self._program = cl.build_program(values, "deterministic.cl")
+        self._program = cl.build_program(values, "deterministic/tractogram.cl")
 
     def run(self, seeds):
         """Run the deterministic algorithm on the given seed points
@@ -210,7 +210,7 @@ class Deterministic:
             self._streamlines,
             self._lengths,
         )
-        cl.run_program(self._program, args, self._n_streamlines)
+        cl.run_tractogram(self._program, args, self._n_streamlines)
         streamlines = np.zeros(
             (self._n_streamlines, self._config.n_steps, 4), dtype=np.float32
         )

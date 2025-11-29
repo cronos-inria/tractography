@@ -1,27 +1,4 @@
-float4 pick_orientation(
-		__global const float fod[$nx][$ny][$nz][$n_directions],
-		__global const float4 vertices[$n_directions],
-		float4 orientation,
-		uint3 index,
-		float max_angle)
-{
-	// Pick the valid direction with max value.
-	float4 current_orientation = {0.0f, 0.0f, 0.0f, 0.0f};
-	float current_max = 0.0f;
-	for (size_t i = 0; i < $n_directions; i++) {
-		if (dot(vertices[i], orientation) < max_angle) {
-			continue;
-		}
-
-	    float cs = fod[index.x][index.y][index.z][i];
-	    if (cs > current_max) {
-			current_max = cs;
-			current_orientation = vertices[i];
-	    }
-	}
-
-	return current_orientation;
-}
+#include "deterministic/core.cl"
 
 __kernel void histogram(
         __global const float fod_values[$nx][$ny][$nz][$n_directions],
@@ -38,6 +15,10 @@ __kernel void histogram(
         __global float hist[$nx][$ny][$nz][$n_coefficients])
 {
     uint gid = get_global_id(0);
+	if (gid >= $n_seeds) return;
+
+	uint4 dims = {$nx, $ny, $nz, $n_directions};
+
 	uint2 state = randoms[gid];
 	float4 local_fod_inverse_affine[4] = {
 		fod_inverse_affine[0],
@@ -99,7 +80,7 @@ __kernel void histogram(
 			}
 
 			// Pick the next direction. If the orientation is 0, there is nowhere to go.
-			orientation = pick_orientation(fod_values, directions, orientation, index, max_angle);
+			orientation = pick_orientation(fod_values, directions, orientation, dims, index, max_angle);
 			if (length(orientation) < 0.5) {
 				break;
 			}
