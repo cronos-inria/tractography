@@ -3,6 +3,35 @@
 
 #define PI 3.14159265359f
 
+// ATOMIC_ADD_GLOBAL_FLOAT
+// Adds two values and atomically store the result in the
+// first value. This is needed because OpenCL does
+// not natively provide atomic operations on floats.
+//
+// left: The left operand. The result will be store here.
+// right: The right operand.
+//
+inline void atomic_add_global_float(__global float *left, float right)
+{
+	// A union is used to safely convert the float's bit pattern 
+    // to an unsigned int for use with atomic_cmpxchg.
+    union {
+        unsigned int iv;
+        float fv;
+    } old, newval;
+
+    do {
+		// Read the current value from global memory and compute
+		// the desired new value.
+        old.fv = *left;
+        newval.fv = old.fv + right;
+
+		// Attempt to write the new value IF the address still holds the old value.
+        // If the return value is not equal to old.iv, it means another work-item 
+        // changed the value.
+    } while (atomic_cmpxchg((__global volatile unsigned int *)left, old.iv, newval.iv) != old.iv);
+}
+
 float4 exps2(float4 p, float4 x, float t) {
     float n = length(x);
     if (n == 0)

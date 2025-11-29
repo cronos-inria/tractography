@@ -1,23 +1,6 @@
 #include "utils/spharm.cl"
 #include "seeds.cl"
 
-inline void atomic_add_global_float(__global float *global_val, float local_val)
-{
-    union {
-        unsigned int int_val;
-        float float_val;
-    } old, newval;
-
-    do {
-        // Read old value
-        old.float_val = *global_val;
-        // Compute new value
-        newval.float_val = old.float_val + local_val;
-        // Try to atomically replace old value with new value
-    } while (atomic_cmpxchg((__global unsigned int *)global_val,
-                            old.int_val, newval.int_val) != old.int_val);
-}
-
 __kernel void histogram(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],
         __global const float4 fod_inverse_affine[4],
