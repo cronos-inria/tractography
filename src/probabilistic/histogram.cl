@@ -1,35 +1,7 @@
 #include "utils/spharm.cl"
 #include "seeds.cl"
+#include "probabilistic/core.cl"
 
-float4 pick_orientation(
-		__global const float fod_values[$nx][$ny][$nz][$n_directions],
-		__global const float4 directions[$n_directions],
-		float4 orientation,
-		uint3 index,
-		float rand,
-		float max_angle)
-{
-
-	// Find the valid orientations.
-	float sum = 0.0f;
-	for (size_t i = 0; i < $n_directions; i++) {
-		sum += fod_values[index.x][index.y][index.z][i] * (dot(directions[i], orientation) > max_angle);
-	}
-	if (sum <= 0.0f) {
-		return (float4) 0; // Nowhere to go.
-	}
-
-	// Pick a random direction according to the shape of the FOD.
-	float cs = 0;
-	for (size_t i = 0; i < $n_directions; i++) {
-		cs += fod_values[index.x][index.y][index.z][i] * (dot(directions[i], orientation) > max_angle);
-		if (cs > rand * sum) {
-			return directions[i];
-		}
-	}
-
-	return (float4) 0; // Should never happen.
-}
 
 __kernel void histogram(
         __global const float fod_values[$nx][$ny][$nz][$n_directions],
@@ -47,6 +19,8 @@ __kernel void histogram(
 {
     uint gid = get_global_id(0);
 	if (gid >= $n_seeds) return;
+
+	uint4 dims = {$nx, $ny, $nz, $n_directions};
 
 	uint2 state = randoms[gid];
 	float4 local_fod_inverse_affine[4] = {
@@ -111,7 +85,7 @@ __kernel void histogram(
 
 			// Pick the next direction. If the orientation is 0, there is nowhere to go.
 			float rand = randu(&state);
-			orientation = pick_orientation(fod_values, directions, orientation, index, rand, max_angle);
+			orientation = pick_orientation(fod_values, directions, orientation, dims, index, rand, max_angle);
 			if (length(orientation) < 0.5f) {
 				break;
 			}

@@ -13,7 +13,7 @@
  * current_orientation: The orientation vector to align against.
  * index: The 3D coordinate (x, y, z) of the voxel currently being processed.
  * dims: The dimensions {nx, ny, nz, n_orientations} of the flattened FOD array.
- * max_cos_angle The *minimum* dot product (cosine) value required for alignment.
+ * max_cos_angle: The *minimum* dot product (cosine) value required for alignment.
  *
  * Returns the best-fitting orientation vector. Is 0 if no valid orientation can
  * be found.
