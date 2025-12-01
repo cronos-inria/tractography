@@ -1,5 +1,6 @@
 #include "utils/spharm.cl"
 #include "seeds.cl"
+#include "diffusion/core.cl"
 
 __kernel void histogram(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],
@@ -18,11 +19,14 @@ __kernel void histogram(
     uint gid = get_global_id(0);
 	if (gid >= $n_seeds) return;
 
+	uint4 dims = {$nx, $ny, $nz, $n_coefficients};
+
 	uint2 state = randoms[gid];
 	float4 local_fod_inverse_affine[4] = {fod_inverse_affine[0], fod_inverse_affine[1], fod_inverse_affine[2], fod_inverse_affine[3]};
 	float4 local_seed_fod_affine[4] = {seed_fod_affine[0], seed_fod_affine[1], seed_fod_affine[2], seed_fod_affine[3]};
 
 	for (size_t j = 0; j < seeds_per_thread; j++) {
+
 		// Generate the seed.
 		float4 location;
 		float4 orientation;
@@ -69,35 +73,9 @@ __kernel void histogram(
 				break;
 			}
 
-			// Evaluate the value of the fODF and its derivatives.	
-			float fod_value = 0.0f;
-			float fod_colatitude_value = 0.0f;
-			float fod_azimuth_value = 0.0f;
-			for (size_t i = 0; i < $n_coefficients; i++) {
-				fod_value += fod[index.x][index.y][index.z][i] * ylm[i];
-				fod_colatitude_value += fod[index.x][index.y][index.z][i] * ylm_dt[i];
-				fod_azimuth_value += fod[index.x][index.y][index.z][i] * ylm_dp[i];
-			}
-			float d = dsoftmax(fod_value, 100.0f);
-			fod_value = softmax(fod_value, 100.0f);
-			fod_colatitude_value *= d;
-			fod_azimuth_value *= d;
-
-			float st, ct, sp, cp;
-			sp = sincos(angles.x, &cp);
-			st = sincos(angles.y, &ct);
-
-			// Define the tangent plane. There is no sin(theta) in ep
-			// because it cancels with the 1/sin(theta) of the derivative.
-			float4 et = {ct * cp, ct * sp, -st, 0.0f};
-			float4 ep = {-sp, cp, 0.0f, 0.0f};
-			
-			// No 1/sin(theta) factor, see comment above.
-			float4 drift = (fod_colatitude_value * et + fod_azimuth_value * ep) / fod_value;
-			float4 noise = randn(&state) * et + randn(&state) * ep;
-
-			float4 tangent = (gamma * dt) * drift + sqrt(noise_variance * gamma * dt) * noise;
-			orientation = exps2(orientation, tangent, 1.0f);
+			// Update the orientation.
+			orientation = update_orientation(fod, ylm, ylm_dp, ylm_dt, index,
+				dims, orientation, &state, dt, gamma, noise_variance);
 
 			// Move the point forwared and add it to the streamline.
 			location += dt * orientation;
