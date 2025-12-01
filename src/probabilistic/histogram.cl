@@ -1,5 +1,4 @@
 #include "utils/spharm.cl"
-#include "seeds.cl"
 #include "probabilistic/core.cl"
 
 

@@ -80,7 +80,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
         "n_directions": n_directions,
         "n_seeds": n_threads,
     }
-    program = cl.build_program(values, ["seeds.cl", "probabilistic/histogram.cl"])
+    program = cl.build_program(values, ["utils/seeds.cl", "probabilistic/histogram.cl"])
 
     args = (
         fod_values_buffer,

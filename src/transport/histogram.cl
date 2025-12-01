@@ -1,5 +1,4 @@
 #include "utils/spharm.cl"
-#include "seeds.cl"
 #include "diffusion/core.cl"
 
 __kernel void histogram(

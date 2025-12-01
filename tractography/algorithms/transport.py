@@ -61,7 +61,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
         "n_steps": config.n_steps,
         "n_seeds": n_threads,
     }
-    program = cl.build_program(values, ["seeds.cl", "transport/histogram.cl"])
+    program = cl.build_program(values, ["utils/seeds.cl", "transport/histogram.cl"])
 
     args = (
         fod_buffer,

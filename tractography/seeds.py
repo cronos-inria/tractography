@@ -149,7 +149,7 @@ def from_fod(
             "n_coefficients": fod.shape[-1],
             "n_seeds": n_seeds,
         }
-        program = tg.algorithms.opencl.build_program(values, "seeds.cl")
+        program = tg.algorithms.opencl.build_program(values, "utils/seeds.cl")
 
         program.seeds_from_fod(
             tg.algorithms.opencl._queue,
