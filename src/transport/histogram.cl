@@ -72,7 +72,7 @@ __kernel void histogram(
 
 			// Update the orientation.
 			orientation = update_orientation(fod, ylm, ylm_dp, ylm_dt, index,
-				dims, orientation, &state, dt, gamma, 0.0f);
+				dims, orientation, 0, dt, gamma, 0.0f);
 
 			// Move the point forwared and add it to the streamline.
 			location += dt * orientation;

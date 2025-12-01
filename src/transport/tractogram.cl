@@ -46,7 +46,7 @@ __kernel void tractography(
 		float2 angles = cart2sph(orientation);
 		ishtmtx(angles.x, angles.y, ylm, ylm_dp, ylm_dt);
 		orientation = update_orientation(fod, ylm, ylm_dp, ylm_dt, index,
-			dims, orientation, NULL, dt, gamma, 0.0f);
+			dims, orientation, 0, dt, gamma, 0.0f);
 
 		// Move the point forwared and add it to the streamline.
 		point += dt * orientation;
