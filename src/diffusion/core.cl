@@ -79,7 +79,10 @@ float4 update_orientation(
     const float4 ep = (float4)(-sp, cp, 0.0f, 0.0f);
 
     const float4 drift = (drift_theta * et + drift_phi * ep) / s; 
-    const float4 noise = randn(state) * et + randn(state) * ep;
+	float4 noise = {0.0f, 0.0f, 0.0f, 0.0f};
+	if (noise_variance > 0.0f) {
+		noise = randn(state) * et + randn(state) * ep;
+	}
 
     // Calculate SDE tangent vector.
     const float scale_drift = gamma * dt;

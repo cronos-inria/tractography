@@ -1,4 +1,5 @@
 #include "utils/spharm.cl"
+#include "diffusion/core.cl"
 
 __kernel void tractography(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],
@@ -11,6 +12,9 @@ __kernel void tractography(
         __global uint lengths[$n_streamlines])
 {
     uint gid = get_global_id(0);
+	if (gid >= $n_streamlines) return;
+
+	uint4 dims = {$nx, $ny, $nz, $n_coefficients};
 
 	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
 
@@ -38,32 +42,11 @@ __kernel void tractography(
 			break;
         }
 
-		// Evaluate the value of the fODF and its derivatives.	
+		// Update the orientation.
 		float2 angles = cart2sph(orientation);
 		ishtmtx(angles.x, angles.y, ylm, ylm_dp, ylm_dt);
-		float fod_value = 0.0f;
-		float fod_colatitude_value = 0.0f;
-		float fod_azimuth_value = 0.0f;
-		for (size_t i = 0; i < $n_coefficients; i++) {
-			fod_value += fod[index.x][index.y][index.z][i] * ylm[i];
-			fod_colatitude_value += fod[index.x][index.y][index.z][i] * ylm_dt[i];
-			fod_azimuth_value += fod[index.x][index.y][index.z][i] * ylm_dp[i];
-		}
-		float d = dsoftmax(fod_value, 100.0f);
-		fod_value = softmax(fod_value, 100.0f);
-		fod_colatitude_value *= d;
-		fod_azimuth_value *= d;
-
-		float st, ct, sp, cp;
-		sp = sincos(angles.x, &cp);
-		st = sincos(angles.y, &ct);
-
-		float4 et = {ct * cp, ct * sp, -st, 0.0f};
-		float4 ep = {-sp, cp, 0.0f, 0.0f};
-		
-		float4 drift = (fod_colatitude_value * et + fod_azimuth_value * ep) / fod_value;
-		float4 tangent = (gamma * dt) * drift;
-		orientation = exps2(orientation, tangent, 1.0f);
+		orientation = update_orientation(fod, ylm, ylm_dp, ylm_dt, index,
+			dims, orientation, NULL, dt, gamma, 0.0f);
 
 		// Move the point forwared and add it to the streamline.
 		point += dt * orientation;

@@ -123,7 +123,7 @@ class Transport:
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
-        self._program = cl.build_program(values, "transport.cl")
+        self._program = cl.build_program(values, "transport/tractogram.cl")
 
     def run(self, seeds):
 
