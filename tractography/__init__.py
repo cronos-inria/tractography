@@ -96,7 +96,7 @@ def histogram(
     # Load the implementation based on the config file.
     implementation = getattr(algorithms, config.algorithm.value).histogram
     histogram = implementation(
-        fod_data, fod.affine, seed_fod_data, seed_mask.affine, n_seeds, config
+        fod_data, fod.affine, seed_fod_data, fod.affine, n_seeds, config
     )
 
     return nib.Nifti1Image(histogram, fod.affine)
