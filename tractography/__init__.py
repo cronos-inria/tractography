@@ -133,6 +133,11 @@ def tractogram(
     if config is None:
         config = configuration.load(Algorithm.TRANSPORT)
 
+    # Pad the seeds to have a multiple of the batch size.
+    n_seeds = len(seeds)
+    extra_seeds = n_seeds % config.batch_size
+    seeds.extend([seeds[-1]] * (config.batch_size - extra_seeds))
+
     implementation = config.implementation(data, affine, config.batch_size, config)
 
     # Perform tractography in batches.
@@ -140,14 +145,13 @@ def tractogram(
     for s in np.array_split(seeds, len(seeds) // config.batch_size):
         streamlines = implementation.run(s)
 
-        # Clean a bit.
-        streamlines = [s for s in streamlines if len(s) > config.min_steps]
-        if any([np.any(np.isnan(s)) or np.any(np.isinf(s)) for s in streamlines]):
-            raise ValueError("Is nan!")
-
         if endpoints_only:
             streamlines = [s[[0, -1]] for s in streamlines]
 
         all_streamlines.extend(streamlines)
+
+    # Clean a bit.
+    all_streamlines = all_streamlines[:n_seeds]  # Ignore extra seeds.
+    all_streamlines = [s for s in all_streamlines if len(s) > config.min_steps]
 
     return all_streamlines

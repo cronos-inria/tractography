@@ -205,7 +205,7 @@ def to_array(seeds: list[Seed]) -> npt.NDArray:
 
 def from_array(array: npt.NDArray) -> list[Seed]:
     """Create seeds from a numpy array"""
-    return np.array([Seed(a[:3], a[4:7]) for a in array])
+    return [Seed(a[:3], a[4:7]) for a in array]
 
 
 def save(filename: Path, seeds: list[Seed]):

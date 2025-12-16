@@ -24,3 +24,16 @@ class TestHistogram(unittest.TestCase):
             / seed_mask_data.size,
             0.005,
         )
+
+
+class TestTractography(unittest.TestCase):
+    """Test the tg.tractogram function"""
+
+    def test_simple(self):
+        """Test the simplest use case"""
+
+        fod = test.data.cross()
+        n_seeds = 100  # The number of seeds can be smaller than the batch size.
+        seeds = tg.seeds.from_fod(fod, np.eye(4), n_seeds)
+        streamlines = tg.tractogram(fod, np.eye(4), seeds)
+        self.assertLessEqual(len(streamlines), n_seeds)
