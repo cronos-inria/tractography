@@ -134,6 +134,11 @@ def tractogram(
     tracker_cls = algorithms.resolve(config.algorithm).tracker
     implementation = tracker_cls(fod.get_fdata(), fod.affine, config.batch_size, config)
 
+    # Pad the seeds to have a multiple of the batch size.
+    n_seeds = len(seeds)
+    extra_seeds = n_seeds % config.batch_size
+    seeds.extend([seeds[-1]] * (config.batch_size - extra_seeds))
+
     # Perform tractography in batches.
     all_streamlines = []
     for s in np.array_split(seeds, len(seeds) // config.batch_size):
@@ -147,4 +152,5 @@ def tractogram(
 
         all_streamlines.extend(streamlines)
 
+    all_streamlines = all_streamlines[:n_seeds]  # Ignore extra seeds.
     return nib.streamlines.Tractogram(all_streamlines, affine_to_rasmm=np.eye(4))
