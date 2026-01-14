@@ -29,7 +29,7 @@ If you would like to use the CPU version, then we recommend using anaconda for t
     conda install numpy
     conda install -c conda-forge pocl
     conda install -c conda-forge pyopencl
-    git clone https://gitlab.inria.fr/cronos/software/tractography.git
+    git clone https://github.com/cronos-inria/tractography.git
     cd tractography
     pip install -e .
 
