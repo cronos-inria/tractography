@@ -15,7 +15,7 @@ If you have a GPU and have the drivers installed and up-to-date, the install sho
 
 .. code-block:: bash
 
-   git clone https://gitlab.inria.fr/cronos/software/tractography.git
+   https://github.com/cronos-inria/tractography.git
    cd tractography
    pip install -e .
 
