@@ -1,4 +1,4 @@
-from . import algorithms, configuration, connectivity, core, seeds, utils
+from . import algorithms, configuration, connectivity, core, nifti, seeds, utils
 from .algorithms.configuration import Algorithm, BaseConfiguration
 
 import nibabel as nib

@@ -6,7 +6,7 @@ from scipy import ndimage
 def multiply(
     left: nib.Nifti1Image,
     right: nib.Nifti1Image,
-    order: int = 0
+    order: int = 0,
 ) -> nib.Nifti1Image:
     """Multiplies two NIfTI images in world space
 
@@ -32,14 +32,11 @@ def multiply(
 
     # Calculate the mapping from 'left' voxels to 'right' voxels.
     affine = np.dot(np.linalg.inv(right.affine), left.affine)
-    matrix = affine[:3, :3]
-    offset = affine[:3, 3]
 
     # Resample the right image data to match the left image grid.
     right_resampled = ndimage.affine_transform(
         input=right.get_fdata(),
-        matrix=matrix,
-        offset=offset,
+        matrix=affine,
         output_shape=left.shape,
         order=order,
         mode='constant',
