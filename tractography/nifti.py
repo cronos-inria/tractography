@@ -37,11 +37,11 @@ def multiply(
     right_resampled = ndimage.affine_transform(
         input=right.get_fdata(),
         matrix=affine,
-        output_shape=left.shape,
+        output_shape=left.shape[:right.ndim],
         order=order,
         mode='constant',
         cval=0.0,
-    )
+    ).reshape(left.shape[:right.ndim] + (1,) * (left.ndim - right.ndim))
 
     # Multiply the data.
     product = left.get_fdata() * right_resampled
