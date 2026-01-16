@@ -38,7 +38,7 @@ def connectome(
 
     # Generate the seeds in the segmented areas.
     seed_odf = core.apply_mask(odf, odf_affine, segmentation > 0, segmentation_affine)
-    s = seeds.from_odf(seed_odf, odf_affine, n_seeds)
+    s = seeds.from_fod(seed_odf, odf_affine, n_seeds)
 
     # Perform tractography.
     streamlines = tractogram(odf, odf_affine, s, config, endpoints_only=True)
@@ -87,16 +87,12 @@ def histogram(
         config = configuration.load(Algorithm.DIFFUSION)
 
     # Apply the mask to the FOD to get the seeding FOD.
-    fod_data = fod.get_fdata()
-    seed_mask_data = seed_mask.get_fdata()
-    seed_fod_data = core.apply_mask(
-        fod_data, fod.affine, seed_mask_data, seed_mask.affine
-    )
+    seed_fod = nifti.multiply(fod, seed_mask)
 
     # Load the implementation based on the config file.
     implementation = getattr(algorithms, config.algorithm.value).histogram
     histogram = implementation(
-        fod_data, fod.affine, seed_fod_data, fod.affine, n_seeds, config
+        fod.get_fdata(), fod.affine, seed_fod.get_fdata(), seed_fod.affine, n_seeds, config
     )
 
     return nib.Nifti1Image(histogram, fod.affine)
