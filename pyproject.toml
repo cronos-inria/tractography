@@ -24,7 +24,22 @@ dependencies = [
     "nimesh>=0.0.2",
     "pydantic~=2.10",
 	"trimesh>=4.7",
+    "mkdocs>=1.5",
+    "coverage>=7.13.1,<8"
 ]
 
 [project.scripts]
 tractography = "tractography.cli:main"
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "linux-64"]
+
+[tool.pixi.pypi-dependencies]
+tractography = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+install = "pip install -e ."
+test = "python -m unittest"
+coverage = "coverage run -m unittest -v && coverage report && coverage xml && coverage html"
+doc = "mkdocs gh-deploy"
