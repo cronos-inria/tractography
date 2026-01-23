@@ -160,5 +160,6 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# Ignore the test-results directory, which contains temporary files generated during testing.
-test-results/
+# pixi environments
+.pixi/*
+!.pixi/config.toml
