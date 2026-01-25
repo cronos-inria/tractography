@@ -21,12 +21,12 @@ jobs:
           pixi-version: v0.62.2
           cache: true
       
-      - name: Install dependencies
-        run: pixi run install
-      
       - name: Run tests
         run: pixi run test
       
+      - name: Run unittests
+        run: pixi run unittest
+
       - name: Generate coverage report
         run: pixi run coverage
       

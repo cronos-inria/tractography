@@ -35,11 +35,15 @@ tractography = "tractography.cli:main"
 channels = ["conda-forge"]
 platforms = ["osx-arm64", "osx-64", "linux-64"]
 
+# Editable installs
 [tool.pixi.pypi-dependencies]
 tractography = { path = ".", editable = true }
 
+# conda packages
+[tool.pixi.dependencies]
+
 [tool.pixi.tasks]
-install = "pip install -e ."
-test = "python -m unittest"
+test = "python -c 'import tractography'"
+unittest = "python -m unittest"
 coverage = "coverage run -m unittest -v && coverage report && coverage xml && coverage html"
 doc = "mkdocs gh-deploy"
