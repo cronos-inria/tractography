@@ -92,28 +92,30 @@ def histogram(
     # Load the implementation based on the config file.
     implementation = getattr(algorithms, config.algorithm.value).histogram
     histogram = implementation(
-        fod.get_fdata(), fod.affine, seed_fod.get_fdata(), seed_fod.affine, n_seeds, config
+        fod.get_fdata(),
+        fod.affine,
+        seed_fod.get_fdata(),
+        seed_fod.affine,
+        n_seeds,
+        config,
     )
 
     return nib.Nifti1Image(histogram, fod.affine)
 
 
 def tractogram(
-    data,
-    affine,
+    fod: nib.Nifti1Image,
     seeds: list[seeds.Seed],
     config: BaseConfiguration | None = None,
     endpoints_only: bool = False,
-):
+) -> nib.streamlines.Tractogram:
     """Generate a tractogram from dMRI data
 
     The tractogram, which is simply a list of streamlines, is generated
     using the specified algorithm.
 
     Args:
-        data: The image data used to perform tractography. It must represent
-            fiber orientation distributions in spherical harmonics form.
-        affine: The affine transformation of the data.
+        fod: The FOD used to generate the streamlines.
         seeds: The seeds used for tractography. See tg.seeds.
         config: Configuration object specifying processing parameters and the
             algorithm to use. If None, a default configuration for the
@@ -122,14 +124,17 @@ def tractogram(
             be returned. Greatly reduces the memory footprint.
 
     Return:
-        The generated tractogram, i.e. a list of streamlines.
+        The generated tractogram, i.e. a list of streamlines in RAS+ millimeter
+        space.
 
     """
 
     if config is None:
         config = configuration.load(Algorithm.TRANSPORT)
 
-    implementation = config.implementation(data, affine, config.batch_size, config)
+    implementation = config.implementation(
+        fod.get_fdata(), fod.affine, config.batch_size, config
+    )
 
     # Perform tractography in batches.
     all_streamlines = []
@@ -138,12 +143,10 @@ def tractogram(
 
         # Clean a bit.
         streamlines = [s for s in streamlines if len(s) > config.min_steps]
-        if any([np.any(np.isnan(s)) or np.any(np.isinf(s)) for s in streamlines]):
-            raise ValueError("Is nan!")
 
         if endpoints_only:
             streamlines = [s[[0, -1]] for s in streamlines]
 
         all_streamlines.extend(streamlines)
 
-    return all_streamlines
+    return nib.streamlines.Tractogram(all_streamlines, affine_to_rasmm=np.eye(4))
