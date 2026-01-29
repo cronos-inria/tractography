@@ -15,10 +15,8 @@ version = "0.2.10"
 readme = "README.rst"
 requires-python = ">=3.10"
 dependencies = [
-	"numpy>=2.0",
     "nibabel~=5.3",
     "scipy>=1.15",
-    "pyopencl>=2024",
     "siphash24~=1.7",
 	"nimesh@git+https://gitlab.inria.fr/cronos/software/nimesh",
     "nimesh>=0.0.2",
@@ -39,13 +37,15 @@ platforms = ["osx-arm64", "osx-64", "linux-64"]
 [tool.pixi.pypi-dependencies]
 tractography = { path = ".", editable = true }
 
-# # conda packages
-# [tool.pixi.dependencies]
-# pyopencl = "*"
-# pocl = "*"
+# conda packages
+[tool.pixi.dependencies]
+pyopencl = "*"
+pocl = "*"
+numpy = "*"
+binutils = "*"
 
 [tool.pixi.tasks]
 test = "python -c 'import tractography'"
 unittest = "python -m unittest"
 coverage = "coverage run -m unittest -v && coverage report && coverage xml && coverage html"
-doc = "mkdocs gh-deploy"
+doc = "mkdocs gh-deploy --force"
