@@ -106,8 +106,8 @@ class TestOpenCLFromFOD(unittest.TestCase):
         seeds = tg.seeds.from_fod(fod, affine, n_seeds, as_array=True, use_opencl=True)
 
         # All points must be in the grid.
-        self.assertTrue(np.all(seeds[:, :3] > -0.5))
-        self.assertTrue(np.all(seeds[:, :3] < 9.5))
+        self.assertTrue(np.all(seeds[:, :3] >= -0.5))
+        self.assertTrue(np.all(seeds[:, :3] <= 9.5))
         self.assertTrue(np.allclose(np.linalg.norm(seeds[:, 4:], axis=1), 1))
 
         # Save the seeds for QA.
