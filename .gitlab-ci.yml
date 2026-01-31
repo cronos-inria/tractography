@@ -15,7 +15,8 @@ test-job:
     - source activate testing
     - conda install anaconda::binutils
     - conda install git
-    - conda install -yq numpy
+    - conda install -c conda-forge numpy
+    - conda install -c conda-forge scipy
     - conda install -c conda-forge pocl
     - conda install -c conda-forge pyopencl
     - pip install coverage
