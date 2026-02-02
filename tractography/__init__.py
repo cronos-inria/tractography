@@ -1,18 +1,19 @@
+from typing import Optional
+
 from . import algorithms, configuration, connectivity, core, nifti, seeds, utils
 from .algorithms.configuration import Algorithm, BaseConfiguration
 
 import nibabel as nib
 import numpy as np
+import numpy.typing as npt
 
 
 def connectome(
-    odf,
-    odf_affine,
-    segmentation,
-    segmentation_affine,
+    fod: nib.Nifti1Image,
+    segmentation: nib.Nifti1Image,
     n_seeds: int = 100000,
-    config: BaseConfiguration | None = None,
-):
+    config: Optional[BaseConfiguration] = None,
+) -> tuple[npt.NDArray, npt.NDArray]:
     """Generate a structural connectivity matrix from ODFs
 
     This function performs tractography using fODF data within and returns a
@@ -20,11 +21,8 @@ def connectome(
     labeled brain regions.
 
     Args:
-        odf: 4D array of fODF data.
-        odf_affine: Affine transformation matrix for the fODF image space.
+        fod: The FOD used to generate the streamlines.
         segmentation: 3D labeled image indicating different brain regions.
-        segmentation_affine: Affine transformation matrix for the
-            segmentation image.
         n_seeds: Total number of seeds to generate for tractography.
         config: Configuration object specifying processing parameters and the
             algorithm to use. If None, a default configuration for the
@@ -37,15 +35,16 @@ def connectome(
     """
 
     # Generate the seeds in the segmented areas.
-    seed_odf = core.apply_mask(odf, odf_affine, segmentation > 0, segmentation_affine)
-    s = seeds.from_fod(seed_odf, odf_affine, n_seeds)
+    mask = nifti.threshold(segmentation, 0.1)
+    seed_fod = nifti.multiply(fod, mask, order=0)
+    s = seeds.from_fod(seed_fod.get_fdata(), seed_fod.affine, n_seeds)
 
     # Perform tractography.
-    streamlines = tractogram(odf, odf_affine, s, config, endpoints_only=True)
+    streamlines = tractogram(fod, s, config, endpoints_only=True).streamlines
 
     # Transform the segmentation into vertices.
     vertices, labels = connectivity.convert_segmentation(
-        segmentation, segmentation_affine
+        segmentation.get_fdata(), segmentation.affine
     )
 
     # Map vertices to streamlines.
