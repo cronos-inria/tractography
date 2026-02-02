@@ -102,3 +102,55 @@ class TestMultiply(unittest.TestCase):
         res_large = tg.nifti.multiply(img_large, img_small)
         self.assertEqual(res_large.shape, shape_large)
         np.testing.assert_array_equal(res_large.affine, img_large.affine)
+
+
+class TestThreshold(unittest.TestCase):
+
+    def test_threshold_logic(self):
+        """Test that values are correctly binarized based on the threshold."""
+
+        # Create a 1D gradient wrapped in a 3D volume: [0.0, 0.5, 1.0, 1.5, 2.0]
+        data = np.array([0.0, 0.5, 1.0, 1.5, 2.0]).reshape(5, 1, 1)
+        affine = np.eye(4)
+        img = nib.Nifti1Image(data, affine)
+
+        # Threshold at 1.0.
+        # Expected: 0.0, 0.5 -> 0 | 1.0, 1.5, 2.0 -> 1
+        result = tg.nifti.threshold(img, value=1.0)
+        result_data = result.get_fdata()
+
+        expected = np.array([0, 0, 1, 1, 1]).reshape(5, 1, 1)
+        np.testing.assert_array_equal(result_data, expected)
+
+    def test_metadata_and_dtype(self):
+        """Ensure affine is preserved and output is strictly uint8."""
+
+        # Use a non-identity affine to ensure it's copied correctly.
+        shape = (3, 3, 3)
+        affine = np.diag([2.0, 2.0, 2.0, 1.0])
+        img = nib.Nifti1Image(np.random.rand(*shape), affine)
+
+        result = tg.nifti.threshold(img, value=0.5)
+
+        # Check affine.
+        np.testing.assert_array_equal(result.affine, affine)
+
+        # Check header data type.
+        self.assertEqual(result.header.get_data_dtype(), np.uint8)
+
+        # Check array data type.
+        self.assertEqual(result.dataobj.dtype, np.uint8)
+
+    def test_all_or_nothing(self):
+        """Test cases where all voxels are above or below threshold."""
+
+        data = np.ones((5, 5, 5)) * 10.0
+        img = nib.Nifti1Image(data, np.eye(4))
+
+        # Case 1: Threshold higher than all data.
+        res_zeros = tg.nifti.threshold(img, value=20.0)
+        self.assertEqual(res_zeros.get_fdata().sum(), 0)
+
+        # Case 2: Threshold lower than all data.
+        res_ones = tg.nifti.threshold(img, value=5.0)
+        np.testing.assert_array_equal(res_ones.get_fdata(), np.ones((5, 5, 5)))

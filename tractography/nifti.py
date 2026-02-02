@@ -46,4 +46,35 @@ def multiply(
     # Multiply the data.
     product = left.get_fdata() * right_resampled
 
-    return nib.Nifti1Image(product, left.affine)
+    # Create a copy of the header to preserve voxel dimensions and units.
+    # Update the header to match the new data type.
+    new_header = left.header.copy()
+    new_header.set_data_dtype(product.dtype)
+
+    return nib.Nifti1Image(product, left.affine, header=new_header)
+
+
+def threshold(
+    nii: nib.Nifti1Image,
+    value: float = 0.0,
+) -> nib.Nifti1Image:
+    """Create bitwise image by thresholding image intensity
+
+    Args:
+        nii: The image to threshold.
+        value: The threshold value. Voxel with values greater or equal to
+            this threshold are set to 1, all other values are set to 0.
+
+    Returns:
+        A new NIfTI image containing the thresholded values (uint8), with
+        metadata preserved from the input.
+    """
+    # Create the binary mask
+    mask_data = (nii.get_fdata() >= value).astype(np.uint8)
+
+    # Preserve the original header to keep voxel sizes and orientation details.
+    # Update the header to reflect the new data type (uint8).
+    new_header = nii.header.copy()
+    new_header.set_data_dtype(np.uint8)
+
+    return nib.Nifti1Image(mask_data, nii.affine, header=new_header)
