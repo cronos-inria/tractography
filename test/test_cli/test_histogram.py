@@ -16,9 +16,7 @@ class TestHistogram(unittest.TestCase):
         """Test the histogram subcommand of the CLI"""
 
         # Generate the data.
-        fod = nib.Nifti1Image(test.data.cross(), np.eye(4))
-        seed_mask_data = fod.get_fdata()[..., 0] > 0
-        seed_mask = nib.Nifti1Image(seed_mask_data.astype(np.uint8), np.eye(4))
+        fod, seed_mask, _ = test.data.cross()
 
         with tempfile.TemporaryDirectory() as d:
 
