@@ -20,30 +20,27 @@ class TestDiffusionHistogram(unittest.TestCase):
         _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     def test_cross(self):
-        fod = test.data.cross()
-        fod = tg.utils.normalize_odf(fod)
-        wm = fod[..., 0] > 0
-        affine = np.eye(4)
+
+        fod, wm, _ = test.data.cross()
+        fod = tg.nifti.multiply(fod, wm)
         config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        nib.save(
-            nib.Nifti1Image(wm.astype(np.uint8), affine),
-            _TEST_RESULTS_DIR / "histogram-cross-wm.nii.gz",
-        )
-        nib.save(
-            nib.Nifti1Image(fod, affine),
-            _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz",
-        )
+
+        nib.save(wm, _TEST_RESULTS_DIR / "histogram-cross-wm.nii.gz")
+        nib.save(fod, _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz")
 
         histogram = tg.algorithms.diffusion.histogram(
-            fod, affine, fod, affine, 10000, config
+            fod.get_fdata(), fod.affine, fod.get_fdata(), fod.affine, 10000, config
         )
         nib.save(
-            nib.Nifti1Image(histogram, affine),
+            nib.Nifti1Image(histogram, fod.affine),
             _TEST_RESULTS_DIR / "histogram-cross-histogram.nii.gz",
         )
 
         # The histogram and the FOD should be very similar.
-        self.assertTrue(np.linalg.norm(histogram - fod) / wm.size < 0.005)
+        self.assertTrue(
+            np.linalg.norm(histogram - fod.get_fdata())
+            / wm.get_fdata().size < 0.005
+        )
 
 
 class TestDiffusion(unittest.TestCase):
@@ -75,19 +72,14 @@ class TestDiffusion(unittest.TestCase):
         """Test tractography on the cross dataset"""
 
         # Prepare the data.
-        fod = test.data.cross()
-        affine = np.eye(4)
-        nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "cross-fod.nii.gz")
-        wm = fod[..., 0] > 0
-        nib.save(
-            nib.Nifti1Image(wm.astype(np.uint8), affine),
-            _TEST_RESULTS_DIR / "cross-wm.nii.gz",
-        )
-        seeds = tg.seeds.from_mask(wm, affine, 1000)
+        fod, wm, _ = test.data.cross()
+        nib.save(fod, _TEST_RESULTS_DIR / "cross-fod.nii.gz")
+        nib.save(wm, _TEST_RESULTS_DIR / "cross-wm.nii.gz")
+        seeds = tg.seeds.from_mask(wm.get_fdata(), wm.affine, 1000)
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        algorithm = tg.algorithms.Diffusion(fod, affine, len(seeds), config)
+        algorithm = tg.algorithms.Diffusion(fod.get_fdata(), fod.affine, len(seeds), config)
         streamlines = algorithm.run(seeds)
 
         # Save the streamlines for QA.

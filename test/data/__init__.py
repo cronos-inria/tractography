@@ -1,3 +1,4 @@
+import nibabel as nib
 import numpy as np
 
 import tractography as tg
@@ -54,9 +55,10 @@ def circle(shape=(10, 10, 1), n_coefficients=45, radius=2, width=1):
 
 
 def cross(shape=(10, 10, 1), n_coefficients=45):
-    """Generate a crossing fibre orientation distributions"""
+    """Generate a crossing fibre dataset"""
+
     bvectors = tg.core.fibonacci_sphere(n_coefficients * 3)
-    fod_values = np.zeros(shape + (len(bvectors),))
+    fod_values = _uniform_tensor_field(_BALL, shape, bvectors)
 
     x_offset = shape[0] // 3
     x_size = shape[0] - 2 * x_offset
@@ -70,7 +72,24 @@ def cross(shape=(10, 10, 1), n_coefficients=45):
         _Y_TENSOR, (shape[0], y_size, shape[2]), bvectors
     )
 
-    return _fit_spherical_harmonics(fod_values, bvectors, n_coefficients)
+    fod_data = _fit_spherical_harmonics(fod_values, bvectors, n_coefficients)
+    fod = nib.Nifti1Image(fod_data, np.eye(4))
+
+    # The segmentation mask is cross shaped.
+    mask_data = np.zeros(shape, dtype=np.uint8)
+    mask_data[x_offset:-x_offset] = 1
+    mask_data[:, y_offset:-y_offset] = 1
+    mask = nib.Nifti1Image(mask_data, np.eye(4))
+
+    # Add ROIs at each end of the cross.
+    segmentation_data = np.zeros(shape, dtype=np.uint8)
+    segmentation_data[x_offset:-x_offset, 0] = 1
+    segmentation_data[x_offset:-x_offset, -1] = 2
+    segmentation_data[0, y_offset:-y_offset] = 3
+    segmentation_data[-1, y_offset:-y_offset] = 4
+    segmentation = nib.Nifti1Image(segmentation_data, np.eye(4))
+
+    return fod, mask, segmentation
 
 
 def _uniform_tensor_field(tensor, shape, bvectors):
