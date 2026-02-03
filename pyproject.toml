@@ -22,8 +22,10 @@ version = "0.3.0"
 readme = "README.rst"
 requires-python = ">=3.10"
 dependencies = [
+    "numpy>=2.0",
     "nibabel~=5.3",
     "scipy>=1.15",
+    "pyopencl>=2024",
     "siphash24~=1.7",
     "nimesh@git+https://gitlab.inria.fr/cronos/software/nimesh",
     "pydantic~=2.10",
@@ -45,10 +47,7 @@ tractography = { path = ".", editable = true }
 
 # conda packages
 [tool.pixi.dependencies]
-pyopencl = "*"
-pocl = "*"
-numpy = "*"
-binutils = "*"
+
 
 [tool.pixi.tasks]
 test = "python -c 'import tractography'"
