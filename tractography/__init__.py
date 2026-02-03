@@ -1,18 +1,19 @@
-from . import algorithms, configuration, connectivity, core, seeds, utils
+from typing import Optional
+
+from . import algorithms, configuration, connectivity, core, nifti, seeds, utils
 from .algorithms.configuration import Algorithm, BaseConfiguration
 
 import nibabel as nib
 import numpy as np
+import numpy.typing as npt
 
 
 def connectome(
-    odf,
-    odf_affine,
-    segmentation,
-    segmentation_affine,
+    fod: nib.Nifti1Image,
+    segmentation: nib.Nifti1Image,
     n_seeds: int = 100000,
-    config: BaseConfiguration | None = None,
-):
+    config: Optional[BaseConfiguration] = None,
+) -> tuple[npt.NDArray, npt.NDArray]:
     """Generate a structural connectivity matrix from ODFs
 
     This function performs tractography using fODF data within and returns a
@@ -20,11 +21,8 @@ def connectome(
     labeled brain regions.
 
     Args:
-        odf: 4D array of fODF data.
-        odf_affine: Affine transformation matrix for the fODF image space.
+        fod: The FOD used to generate the streamlines.
         segmentation: 3D labeled image indicating different brain regions.
-        segmentation_affine: Affine transformation matrix for the
-            segmentation image.
         n_seeds: Total number of seeds to generate for tractography.
         config: Configuration object specifying processing parameters and the
             algorithm to use. If None, a default configuration for the
@@ -37,15 +35,16 @@ def connectome(
     """
 
     # Generate the seeds in the segmented areas.
-    seed_odf = core.apply_mask(odf, odf_affine, segmentation > 0, segmentation_affine)
-    s = seeds.from_odf(seed_odf, odf_affine, n_seeds)
+    mask = nifti.threshold(segmentation, 0.1)
+    seed_fod = nifti.multiply(fod, mask, order=0)
+    s = seeds.from_fod(seed_fod.get_fdata(), seed_fod.affine, n_seeds)
 
     # Perform tractography.
-    streamlines = tractogram(odf, odf_affine, s, config, endpoints_only=True)
+    streamlines = tractogram(fod, s, config, endpoints_only=True).streamlines
 
     # Transform the segmentation into vertices.
     vertices, labels = connectivity.convert_segmentation(
-        segmentation, segmentation_affine
+        segmentation.get_fdata(), segmentation.affine
     )
 
     # Map vertices to streamlines.
@@ -87,37 +86,35 @@ def histogram(
         config = configuration.load(Algorithm.DIFFUSION)
 
     # Apply the mask to the FOD to get the seeding FOD.
-    fod_data = fod.get_fdata()
-    seed_mask_data = seed_mask.get_fdata()
-    seed_fod_data = core.apply_mask(
-        fod_data, fod.affine, seed_mask_data, seed_mask.affine
-    )
+    seed_fod = nifti.multiply(fod, seed_mask)
 
     # Load the implementation based on the config file.
     implementation = getattr(algorithms, config.algorithm.value).histogram
     histogram = implementation(
-        fod_data, fod.affine, seed_fod_data, fod.affine, n_seeds, config
+        fod.get_fdata(),
+        fod.affine,
+        seed_fod.get_fdata(),
+        seed_fod.affine,
+        n_seeds,
+        config,
     )
 
     return nib.Nifti1Image(histogram, fod.affine)
 
 
 def tractogram(
-    data,
-    affine,
+    fod: nib.Nifti1Image,
     seeds: list[seeds.Seed],
     config: BaseConfiguration | None = None,
     endpoints_only: bool = False,
-):
+) -> nib.streamlines.Tractogram:
     """Generate a tractogram from dMRI data
 
     The tractogram, which is simply a list of streamlines, is generated
     using the specified algorithm.
 
     Args:
-        data: The image data used to perform tractography. It must represent
-            fiber orientation distributions in spherical harmonics form.
-        affine: The affine transformation of the data.
+        fod: The FOD used to generate the streamlines.
         seeds: The seeds used for tractography. See tg.seeds.
         config: Configuration object specifying processing parameters and the
             algorithm to use. If None, a default configuration for the
@@ -126,14 +123,17 @@ def tractogram(
             be returned. Greatly reduces the memory footprint.
 
     Return:
-        The generated tractogram, i.e. a list of streamlines.
+        The generated tractogram, i.e. a list of streamlines in RAS+ millimeter
+        space.
 
     """
 
     if config is None:
         config = configuration.load(Algorithm.TRANSPORT)
 
-    implementation = config.implementation(data, affine, config.batch_size, config)
+    implementation = config.implementation(
+        fod.get_fdata(), fod.affine, config.batch_size, config
+    )
 
     # Perform tractography in batches.
     all_streamlines = []
@@ -142,12 +142,10 @@ def tractogram(
 
         # Clean a bit.
         streamlines = [s for s in streamlines if len(s) > config.min_steps]
-        if any([np.any(np.isnan(s)) or np.any(np.isinf(s)) for s in streamlines]):
-            raise ValueError("Is nan!")
 
         if endpoints_only:
             streamlines = [s[[0, -1]] for s in streamlines]
 
         all_streamlines.extend(streamlines)
 
-    return all_streamlines
+    return nib.streamlines.Tractogram(all_streamlines, affine_to_rasmm=np.eye(4))

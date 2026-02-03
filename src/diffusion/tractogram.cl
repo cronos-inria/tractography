@@ -13,9 +13,14 @@ __kernel void tractography(
         __global float4 streamlines[$n_streamlines][$n_steps],
         __global uint lengths[$n_streamlines])
 {
+	// Get the global ID, with each ID corresponding to a
+	// streamline to generate. On some architectures, more threads
+	// can be started than requested because of padding. We make
+	// sure those threads do nothing.
     uint gid = get_global_id(0);
-	uint2 state = randoms[gid];
+	if (gid >= $n_streamlines) return;
 
+	uint2 state = randoms[gid];
 	uint4 dims = {$nx, $ny, $nz, $n_coefficients};
 
 	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};

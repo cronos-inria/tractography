@@ -3,25 +3,23 @@
 
 #include "utils/spharm.cl"
 
-#define N_DIRECTIONS 600
+#define N_DIRECTIONS 1000
 
 // Generates points approximately uniformly distributed on the sphere
-// uing the Fibonacci lattice.
-void fibonacci_sphere(float4 points[N_DIRECTIONS])
+// uing the Fibonacci lattice, one at a time.
+float4 fibonacci_sphere(uint n, uint n_points)
 {
     const float phi = (sqrt(5.0f) + 1.0f) * 0.5f;
     const float golden_angle = 2.0f * PI / phi;
 
-    for (int i = 0; i < N_DIRECTIONS; i++) {
+	float theta = n * golden_angle;
+	float z = 1.0f - (2.0f * n / (n_points - 1));
+	float radius = sqrt(1.0f - z * z);
 
-        float theta = i * golden_angle;
-        float z = 1.0f - (2.0f * i / (N_DIRECTIONS - 1));
-        float radius = sqrt(1.0f - z * z);
-		float x = radius * cos(theta);
-		float y = radius * sin(theta);
+	float st, ct;
+	st = sincos(theta, &ct);
 
-        points[i] = (float4) {x, y, z, 0.0f};
-    }
+	return (float4) {radius * ct, radius * st, z, 0.0f};
 }
 
 // Returns an orientation sampled from a single FOD.
@@ -29,32 +27,29 @@ float4 sample_fod(
 		__global const float fod[$n_coefficients],
 		uint2* state)
 {
-	float4 directions[N_DIRECTIONS];
-	fibonacci_sphere(directions);
-
-	// Evaluate the FOD over the provided directions.
-	float values[N_DIRECTIONS];
-	for (size_t n = 0; n < N_DIRECTIONS; n++) {
-		values[n] = max(shval(fod, directions[n]), 0.0f);
-	}
+	// Note: The Fibonacci points are re-evaluated twice. This is inefficient,
+	// but precomputing and storing them increases memory requirements and
+	// causes segfaults when running on CPU via PoCL.
 
 	// Find the valid orientations.
 	float sum = 0;
 	for (size_t i = 0; i < N_DIRECTIONS; i++) {
-		sum += values[i];
+		sum += max(shval(fod, fibonacci_sphere(i, N_DIRECTIONS)), 0.0f);;
 	}
 
 	// Pick a random direction according to the shape of the FOD.
 	float rand = randu(state);
 	float cs = 0;
-	for (size_t i = 0; i < N_DIRECTIONS; i++) {
-		cs += values[i];
+	for (int i = 0; i < N_DIRECTIONS; i++) {
+		float4 p = fibonacci_sphere(i, N_DIRECTIONS);
+		cs += max(shval(fod, p), 0.0f);;
 		if (cs > rand * sum) {
-			return directions[i];
+			return p;
 		}
 	}
 
-	return (float4) 0;
+	// Should never happen.
+	return (float4) {0.0f, 0.0f, 1.0f, 0.0f};
 }
 
 // Returns a seed (location, orientation) sampled from the provided FOD.

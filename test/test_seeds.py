@@ -58,13 +58,11 @@ class TestFromODF(unittest.TestCase):
     def test_simple(self):
         """Test the simplest use-case"""
 
-        fod = test.data.cross()
-        affine = np.eye(4)
-        wm = fod[..., 0] > 0
-        seeds = tg.seeds.from_mask(wm, affine, 1000)
+        fod, wm, _ = test.data.cross()
+        seeds = tg.seeds.from_mask(wm.get_fdata(), wm.affine, 1000)
 
-        fod_data = tg.utils.normalize_odf(fod)
-        seeds = tg.seeds.from_fod(fod_data, affine, 10000, use_opencl=False)
+        fod_data = tg.utils.normalize_odf(fod.get_fdata())
+        seeds = tg.seeds.from_fod(fod_data, fod.affine, 10000, use_opencl=False)
         self.assertEqual(len(seeds), 10000)
 
         # Test simple saving and loading to .tck.
@@ -78,7 +76,7 @@ class TestFromODF(unittest.TestCase):
 
         # Returning as an array should change nothing.
         seeds = tg.seeds.from_fod(
-            fod_data, affine, 10000, as_array=True, use_opencl=False
+            fod_data, fod.affine, 10000, as_array=True, use_opencl=False
         )
         self.assertEqual(seeds.shape, (10000, 8))
 
@@ -100,24 +98,24 @@ class TestOpenCLFromFOD(unittest.TestCase):
 
         # Generate fake data.
         n_seeds = 100000
-        fod = test.data.cross()
-        mask = fod[..., 0] > 0
-        affine = np.eye(4)
-        seeds = tg.seeds.from_fod(fod, affine, n_seeds, as_array=True, use_opencl=True)
+        fod, mask, _ = test.data.cross()
+        fod = tg.nifti.multiply(fod, mask)
+        seeds = tg.seeds.from_fod(
+            fod.get_fdata(),
+            fod.affine,
+            n_seeds,
+            as_array=True,
+            use_opencl=True,
+        )
 
         # All points must be in the grid.
-        self.assertTrue(np.all(seeds[:, :3] > -0.5))
-        self.assertTrue(np.all(seeds[:, :3] < 9.5))
+        self.assertTrue(np.all(seeds[:, :3] >= -0.5))
+        self.assertTrue(np.all(seeds[:, :3] <= 9.5))
         self.assertTrue(np.allclose(np.linalg.norm(seeds[:, 4:], axis=1), 1))
 
         # Save the seeds for QA.
-        nib.save(
-            nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "gpu-simple-fod.nii.gz"
-        )
-        nib.save(
-            nib.Nifti1Image(mask.astype(np.uint8), affine),
-            _TEST_RESULTS_DIR / "gpu-simple-wm.nii.gz",
-        )
+        nib.save(fod, _TEST_RESULTS_DIR / "gpu-simple-fod.nii.gz")
+        nib.save(mask, _TEST_RESULTS_DIR / "gpu-simple-wm.nii.gz")
         tg.seeds.save(
             _TEST_RESULTS_DIR / "gpu-simple-seeds.tck", tg.seeds.from_array(seeds)
         )

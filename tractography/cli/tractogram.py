@@ -56,23 +56,18 @@ def main(
     config = tg.configuration.load(algorithm)
     tg.cli.utils.set_tractography_config(config, kwargs)
 
-    # Load the seeds from the provided surface.
+    # Load the seeds from the provided file.
     seeds = tg.seeds.load(seeds_path)
 
-    # Load the FOD image.
-    nii = nib.load(image_path)
-    data = nii.get_fdata()
-
-    # Create the mask from the segmentation and apply it to the data.
+    # Load the FOD image and apply the mask if one was provided.
+    fod = nib.load(image_path)
     if "mask" in kwargs and kwargs["mask"] is not None:
-        mask_nii = nib.load(kwargs["mask"])
-        mask = mask_nii.get_fdata()
-        data = tg.core.apply_mask(data, nii.affine, mask, mask_nii.affine)
+        mask = nib.load(kwargs["mask"])
+        fod = tg.nifti.multiply(fod, mask)
 
-    streamlines = tg.tractogram(data, nii.affine, seeds, config)
+    tractogram = tg.tractogram(fod, seeds, config)
 
     # Save the resulting tractogram.
-    tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
     tck = nib.streamlines.TckFile(tractogram)
     tck.save(tractogram_path)
 

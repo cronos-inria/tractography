@@ -22,16 +22,14 @@ class TestTractogram(unittest.TestCase):
         """Test tractography on the cross dataset"""
 
         # Prepare the data.
-        fod = test.data.cross()
-        affine = np.eye(4)
+        fod, wm, _ = test.data.cross()
         fod_path = _TEST_RESULTS_DIR / "cross-fod.nii.gz"
-        nib.save(nib.Nifti1Image(fod, affine), fod_path)
+        nib.save(fod, fod_path)
 
-        wm = fod[..., 0] > 0
         wm_path = _TEST_RESULTS_DIR / "cross-wm.nii.gz"
-        nib.save(nib.Nifti1Image(wm.astype(np.uint8), affine), wm_path)
+        nib.save(wm, wm_path)
 
-        seeds = tg.seeds.from_mask(wm, affine, 1000)
+        seeds = tg.seeds.from_mask(wm.get_fdata(), wm.affine, 1000)
         seeds_path = _TEST_RESULTS_DIR / "cross-seeds.txt"
         tg.seeds.save(seeds_path, seeds)
 

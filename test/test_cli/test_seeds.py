@@ -21,10 +21,9 @@ class TestSeeds(unittest.TestCase):
         _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
         # Prepare the data.
-        fod = test.data.cross()
-        affine = np.eye(4)
+        fod, _, _ = test.data.cross()
         fod_path = _TEST_RESULTS_DIR / "cross-fod.nii.gz"
-        nib.save(nib.Nifti1Image(fod, affine), fod_path)
+        nib.save(fod, fod_path)
         self.fod_path = fod_path
         self.n_seeds = 1000
 
