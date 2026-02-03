@@ -32,8 +32,8 @@ dependencies = [
 tractography = "tractography.cli:main"
 
 [tool.pixi.workspace]
-channels = ["conda-forge"]
-platforms = ["osx-arm64", "osx-64", "linux-64"]
+channels = ["conda-forge", "anaconda"]
+platforms = ["osx-arm64", "linux-64"]
 
 # Editable installs
 [tool.pixi.pypi-dependencies]
@@ -41,7 +41,11 @@ tractography = { path = ".", editable = true }
 
 # conda packages
 [tool.pixi.dependencies]
-
+binutils = { version = "*", channel = "anaconda" }
+numpy = {version = "*", channel = "conda-forge" }
+scipy = {version = "*", channel = "conda-forge" }
+pocl = { version = "*", channel = "conda-forge" }
+pyopencl = { version = "*", channel = "conda-forge" }
 
 [tool.pixi.tasks]
 test = "python -c 'import tractography'"
