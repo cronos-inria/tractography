@@ -2298,7 +2298,7 @@ packages:
 - pypi: ./
   name: tractography
   version: 0.2.10
-  sha256: 5341601c1d52aefc4873776593401951b3954f9ce479f03f192b2acc4bda1bef
+  sha256: a9c3918419989453043a2f1a1d32374eb7db54c13b260bab875fb96115c20622
   requires_dist:
   - numpy>=2.0
   - nibabel~=5.3
