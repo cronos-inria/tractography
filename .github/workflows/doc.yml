@@ -10,6 +10,8 @@ on:
 jobs:
   build_mkdocs:
     runs-on: ubuntu-latest
+    permissions:
+      pages: write  # for gh-deploy
 
     steps:
       - name: Checkout code
@@ -23,6 +25,8 @@ jobs:
 
       - name: Build docs
         run: pixi run doc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # required for gh-deploy
 
   deploy-docs:
     needs: build_mkdocs
