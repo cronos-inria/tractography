@@ -9,6 +9,7 @@ on:
 
 jobs:
   build-and-test:
+    name: Build, Test & Coverage
     runs-on: ubuntu-latest
 
     steps:
@@ -22,13 +23,13 @@ jobs:
           cache: true
       
       - name: Run tests
-        run: pixi run test
+        run: pixi run -e cpu test
       
       - name: Run unittests
-        run: pixi run unittest
+        run: pixi run -e cpu unittest
 
       - name: Generate coverage report
-        run: pixi run coverage
+        run: pixi run -e cpu coverage
       
       - name: Upload coverage to GitHub
         if: always()
@@ -37,7 +38,6 @@ jobs:
           name: coverage-report
           path: |
             htmlcov/
-            coverage.xml
             .coverage
           retention-days: 30
           if-no-files-found: warn
