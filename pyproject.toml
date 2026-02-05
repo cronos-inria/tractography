@@ -46,7 +46,7 @@ coverage = { version = "*", channel = "conda-forge" }
 test = "python -c 'import tractography'"
 unittest = "python -m unittest"
 coverage = "coverage run -m unittest -v && coverage report && coverage html"
-doc = "mkdocs gh-deploy --config-file tractography/mkdocs.yml --force"
+doc = "mkdocs gh-deploy --config-file mkdocs.yml --force"
 
 [tool.pixi.feature.cpu.dependencies]
 binutils = { version = "*", channel = "anaconda" }
