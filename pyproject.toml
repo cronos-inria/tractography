@@ -23,9 +23,7 @@ dependencies = [
 	"nimesh@git+https://gitlab.inria.fr/cronos/software/nimesh",
     "nimesh>=0.0.2",
     "pydantic~=2.10",
-	"trimesh>=4.7",
-    "mkdocs>=1.5",
-    "coverage>=7.13.1,<8"
+	"trimesh>=4.7"
 ]
 
 [project.scripts]
@@ -33,7 +31,7 @@ tractography = "tractography.cli:main"
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "anaconda"]
-platforms = ["osx-arm64", "linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 
 # Editable installs
 [tool.pixi.pypi-dependencies]
@@ -41,15 +39,21 @@ tractography = { path = ".", editable = true }
 
 # conda packages
 [tool.pixi.dependencies]
+mkdocs = { version = "*", channel = "conda-forge" }
+coverage = { version = "*", channel = "conda-forge" }
+
+[tool.pixi.tasks]
+test = "python -c 'import tractography'"
+unittest = "python -m unittest"
+coverage = "coverage run -m unittest -v && coverage report && coverage html"
+doc = "mkdocs gh-deploy --force"
+
+[tool.pixi.feature.cpu.dependencies]
 binutils = { version = "*", channel = "anaconda" }
 numpy = {version = "*", channel = "conda-forge" }
 scipy = {version = "*", channel = "conda-forge" }
 pocl = { version = "*", channel = "conda-forge" }
 pyopencl = { version = "*", channel = "conda-forge" }
 
-[tool.pixi.tasks]
-test = "python -c 'import tractography'"
-unittest = "python -m unittest"
-coverage = "coverage run -m unittest -v && coverage report && coverage xml && coverage html"
-doc = "mkdocs gh-deploy --force"
-testdoc = "mkdocs build"
+[tool.pixi.environments]
+cpu = { features = ["cpu"], solve-group = "default" }
