@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pages: write  # for gh-deploy
+      contents: write  # for gh-deploy
 
     steps:
       - name: Checkout code
