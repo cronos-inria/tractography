@@ -1,4 +1,4 @@
-name: doc
+name: Deploy Documentation
 
 on:
   push:
@@ -20,11 +20,6 @@ jobs:
         with:
           pixi-version: v0.62.2
           cache: true
-     
-      - name: Test mkdocs
-        run: pixi run testdoc
 
       - name: Deploy docs
         run: pixi run doc
-        with:
-          GITHUB_TOKEN: ${{ github.token }}
