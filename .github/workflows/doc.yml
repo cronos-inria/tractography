@@ -22,7 +22,7 @@ jobs:
           cache: true
 
       - name: Build docs
-        run: pixi run testdoc
+        run: pixi run doc
 
   deploy-docs:
     needs: build_mkdocs
