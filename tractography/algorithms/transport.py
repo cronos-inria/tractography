@@ -5,14 +5,11 @@ import tractography as tg
 from . import opencl as cl
 
 from .configuration import Algorithm, BaseConfiguration
+from . import register
 
 
 class Configuration(BaseConfiguration):
     inverse_curvature: pydantic.PositiveFloat
-
-    @property
-    def implementation(self):
-        return Transport
 
     @classmethod
     def load(cls):
@@ -22,7 +19,7 @@ class Configuration(BaseConfiguration):
 def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     """Generate a streamline histogram
 
-    The histogram correponds to the FOD associated to a particular tracgogram. That is,
+    The histogram corresponds to the FOD associated to a particular tractogram. That is,
     the distribution of streamline orientations, for each voxel. This function
     generates the histogram directly, without saving the intermediate streamlines and
     therefore allows a much larger number of seeds to be used.
@@ -151,3 +148,6 @@ class Transport:
         cl.copy_from_buffer(self._lengths, lengths)
 
         return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
+
+
+register(Algorithm.TRANSPORT, Transport)

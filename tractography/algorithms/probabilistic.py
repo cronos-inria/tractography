@@ -5,14 +5,11 @@ import trimesh
 import tractography as tg
 from . import opencl as cl
 from .configuration import Algorithm, BaseConfiguration
+from . import register
 
 
 class Configuration(BaseConfiguration):
     maximum_angle: pydantic.PositiveInt  # in degrees
-
-    @property
-    def implementation(self):
-        return Probabilistic
 
     @classmethod
     def load(cls):
@@ -230,3 +227,6 @@ class Probabilistic:
         cl.copy_from_buffer(self._lengths, lengths)
 
         return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
+
+
+register(Algorithm.PROBABILISTIC, Probabilistic)

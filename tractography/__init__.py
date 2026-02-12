@@ -131,9 +131,8 @@ def tractogram(
     if config is None:
         config = configuration.load(Algorithm.TRANSPORT)
 
-    implementation = config.implementation(
-        fod.get_fdata(), fod.affine, config.batch_size, config
-    )
+    tracker_cls = algorithms.resolve(config.algorithm)
+    implementation = tracker_cls(fod.get_fdata(), fod.affine, config.batch_size, config)
 
     # Perform tractography in batches.
     all_streamlines = []
