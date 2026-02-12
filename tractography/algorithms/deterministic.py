@@ -218,4 +218,4 @@ class Deterministic:
         return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
 
 
-register(Algorithm.DETERMINISTIC, Deterministic)
+register(Algorithm.DETERMINISTIC, Deterministic, histogram)

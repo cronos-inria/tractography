@@ -161,4 +161,4 @@ class Diffusion:
         return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
 
 
-register(Algorithm.DIFFUSION, Diffusion)
+register(Algorithm.DIFFUSION, Diffusion, histogram)

@@ -229,4 +229,4 @@ class Probabilistic:
         return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
 
 
-register(Algorithm.PROBABILISTIC, Probabilistic)
+register(Algorithm.PROBABILISTIC, Probabilistic, histogram)

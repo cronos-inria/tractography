@@ -150,4 +150,4 @@ class Transport:
         return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
 
 
-register(Algorithm.TRANSPORT, Transport)
+register(Algorithm.TRANSPORT, Transport, histogram)

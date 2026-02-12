@@ -1,32 +1,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Callable, Final
 
 from .configuration import Algorithm
 
 @dataclass(frozen=True)
 class RegistryEntry:
     tracker: type
+    histogram: Callable
 
 
 _REGISTRY: Final[dict[Algorithm, RegistryEntry]] = {}
 
 
-def register(algorithm: Algorithm, tracker: type) -> None:
+def register(algorithm: Algorithm, tracker: type, histogram: Callable) -> None:
     """Register a tracker implementation class for an algorithm."""
     if algorithm in _REGISTRY:
         raise ValueError(f"Tracker already registered for algorithm: {algorithm}")
-    _REGISTRY[algorithm] = RegistryEntry(tracker=tracker)
+    _REGISTRY[algorithm] = RegistryEntry(tracker=tracker, histogram=histogram)
 
 
-def resolve(algorithm: Algorithm) -> type:
+def resolve(algorithm: Algorithm) -> RegistryEntry:
     """Resolve the tracker class for the given algorithm."""
     try:
-        return _REGISTRY[algorithm].tracker
+        return _REGISTRY[algorithm]
     except KeyError as e:
         raise ValueError(
-            f"No tracker registered for algorithm: {algorithm}."
+            f"Nothing registered for algorithm: {algorithm}."
         ) from e
 
 

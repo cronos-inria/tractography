@@ -89,7 +89,7 @@ def histogram(
     seed_fod = nifti.multiply(fod, seed_mask)
 
     # Load the implementation based on the config file.
-    implementation = getattr(algorithms, config.algorithm.value).histogram
+    implementation = algorithms.resolve(config.algorithm).histogram
     histogram = implementation(
         fod.get_fdata(),
         fod.affine,
@@ -131,7 +131,7 @@ def tractogram(
     if config is None:
         config = configuration.load(Algorithm.TRANSPORT)
 
-    tracker_cls = algorithms.resolve(config.algorithm)
+    tracker_cls = algorithms.resolve(config.algorithm).tracker
     implementation = tracker_cls(fod.get_fdata(), fod.affine, config.batch_size, config)
 
     # Perform tractography in batches.
