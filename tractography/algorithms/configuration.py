@@ -42,8 +42,12 @@ class BaseConfiguration(pydantic.BaseModel):
         return int(np.floor(self.streamline.length.maximum / self.save_at))
 
     @property
-    def min_steps(self) -> int:
+    def min_n_points(self) -> int:
         return int(np.ceil(self.streamline.length.minimum / self.save_at))
+
+    @property
+    def min_n_steps(self) -> int:
+        return int(np.ceil(self.streamline.length.minimum / self.step_size))
 
     @classmethod
     def load(cls, algorithm):

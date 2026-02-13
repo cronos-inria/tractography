@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 
 from dataclasses import dataclass
 from typing import Callable, Final
@@ -9,16 +10,17 @@ from .configuration import Algorithm
 class RegistryEntry:
     tracker: type
     histogram: Callable
+    connectome: Optional[Callable] = None
 
 
 _REGISTRY: Final[dict[Algorithm, RegistryEntry]] = {}
 
 
-def register(algorithm: Algorithm, tracker: type, histogram: Callable) -> None:
+def register(algorithm: Algorithm, tracker: type, histogram: Callable, connectome: Optional[Callable] = None) -> None:
     """Register a tracker implementation class for an algorithm."""
     if algorithm in _REGISTRY:
         raise ValueError(f"Tracker already registered for algorithm: {algorithm}")
-    _REGISTRY[algorithm] = RegistryEntry(tracker=tracker, histogram=histogram)
+    _REGISTRY[algorithm] = RegistryEntry(tracker=tracker, histogram=histogram, connectome=connectome)
 
 
 def resolve(algorithm: Algorithm) -> RegistryEntry:
