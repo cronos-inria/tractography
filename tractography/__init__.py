@@ -11,48 +11,78 @@ import numpy.typing as npt
 def connectome(
     fod: nib.Nifti1Image,
     segmentation: nib.Nifti1Image,
-    n_seeds: int = 100000,
-    config: Optional[BaseConfiguration] = None,
+    n_seeds: int = 1000000,
+    config: BaseConfiguration | None = None,
+    distance_upper_bound: float = 4.0,
 ) -> tuple[npt.NDArray, npt.NDArray]:
-    """Generate a structural connectivity matrix from ODFs
+    """Generates a structural connectivity matrix directly without storing streamlines
 
-    This function performs tractography using fODF data within and returns a
-    connectivity matrix representing the structural connections between
-    labeled brain regions.
+    Similar to how ``histogram`` bypasses intermediate streamline storage to
+    compute orientation distributions, this function tracks streamlines on the
+    GPU and immediately records which pairs of labeled regions are connected,
+    producing a connectivity matrix in a single pass.
 
     Args:
         fod: The FOD used to generate the streamlines.
         segmentation: 3D labeled image indicating different brain regions.
-        n_seeds: Total number of seeds to generate for tractography.
-        config: Configuration object specifying processing parameters and the
-            algorithm to use. If None, a default configuration for the
-            transport algorithm is loaded. See tg.configuration.load.
+            Integer labels; 0 is treated as background.
+        n_seeds: The number of seeds (streamlines) to generate.
+        config: The configuration. If None, the default configuration for the
+            deterministic algorithm is used.
+        distance_upper_bound: Maximum distance between a streamline endpoint
+            and a labelled vertex for the endpoint to be assigned that label.
 
     Returns:
-        connectome: A symmetric connectivity matrix representing the number
-            of streamlines connecting each pair of brain regions.
-        labels: The labels associated with each row and column of the matrix.
+        matrix: A symmetric (n_labels × n_labels) connectivity matrix counting
+            the number of streamlines connecting each pair of regions.
+        labels: A 1D array of the unique non-zero labels from the segmentation.
+
     """
 
-    # Generate the seeds in the segmented areas.
+    if config is None:
+        config = configuration.load(Algorithm.DETERMINISTIC)
+
+    # Build the seed FOD by masking the FOD with the segmentation.
     mask = nifti.threshold(segmentation, 0.1)
     seed_fod = nifti.multiply(fod, mask, order=0)
-    s = seeds.from_fod(seed_fod.get_fdata(), seed_fod.affine, n_seeds)
 
-    # Perform tractography.
-    streamlines = tractogram(fod, s, config, endpoints_only=True).streamlines
-
-    # Transform the segmentation into vertices.
-    vertices, labels = connectivity.convert_segmentation(
-        segmentation.get_fdata(), segmentation.affine
+    # Convert the segmentation to labelled vertices (world-space points).
+    seg_data = segmentation.get_fdata().astype(np.int32)
+    vertices, vertex_labels = connectivity.convert_segmentation(
+        seg_data, segmentation.affine
     )
 
-    # Map vertices to streamlines.
-    mapping = connectivity.map_vertices(vertices, streamlines, labels)
-    symmetric_mapping = connectivity.symmetrize_mapping(mapping)
+    # Extract unique labels (excluding background 0).
+    labels = np.unique(seg_data)
+    labels = labels[labels > 0]
+    n_labels = len(labels)
 
-    # Compile the final matrix.
-    return connectivity.compile_connectivity_matrix(symmetric_mapping)
+    # Reindex the labels to be continuous.
+    label_map = {l:i for i, l in enumerate(labels)}
+    vertex_relabels = np.array([label_map[v] for v in vertex_labels])
+
+    # Resolve the algorithm-specific implementation.
+    implementation = algorithms.resolve(config.algorithm).connectome
+    if implementation is None:
+        raise ValueError(f"No connectome implementation registered for algorithm: {config.algorithm}")
+
+    matrix = implementation(
+        fod.get_fdata(),
+        fod.affine,
+        seed_fod.get_fdata(),
+        seed_fod.affine,
+        vertices,
+        vertex_relabels,
+        n_labels,
+        n_seeds,
+        config,
+        distance_upper_bound,
+    )
+
+    # Symmetrize: count (A→B) and (B→A) together.
+    matrix = matrix + matrix.T
+
+    return matrix, labels
 
 
 def histogram(
@@ -145,7 +175,7 @@ def tractogram(
         streamlines = implementation.run(s)
 
         # Clean a bit.
-        streamlines = [s for s in streamlines if len(s) > config.min_steps]
+        streamlines = [s for s in streamlines if len(s) > config.min_n_points]
 
         if endpoints_only:
             streamlines = [s[[0, -1]] for s in streamlines]
