@@ -1,3 +1,6 @@
+#ifndef __PROBABILISTIC_CORE___
+#define __PROBABILISTIC_CORE___
+
 /**
  * PICK_ORIENTATION
  * Selects a next orientation probabilistically, weighted by the FOD values,
@@ -7,8 +10,8 @@
  * orientations: Pointer to the global array of discrete direction vectors. It
  * 	must contains dims.w orientations.
  * current_orientation: The orientation vector to align against.
- * index: The 3D coordinate (x, y, z) of the voxel currently being processed.
  * dims: The dimensions {nx, ny, nz, n_orientations} of the flattened FOD array.
+ * index: The 3D coordinate (x, y, z) of the voxel currently being processed.
  * rand: A pseudo-random float [0.0, 1.0) used for selection.
  * max_cos_angle: The *minimum* dot product (cosine) value required for alignment.
  * @return float4 The probabilistically selected orientation vector.
@@ -69,3 +72,5 @@ inline float4 pick_orientation(
     // Given the logic, the last direction should have been returned in the loop.
     return (float4)(0.0f); 
 }
+
+#endif

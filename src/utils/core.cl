@@ -3,6 +3,39 @@
 
 #define PI 3.14159265359f
 
+// NEAREST_VERTEX_LABEL
+// Finds the nearest vertex to a given point and returns its label.
+// Returns -1 if no vertex is within the distance bound.
+//
+// vertices: An array of vertices.
+// vertex_labels: An array of vertex labels.
+// n_vertices: The number of vertices.
+// point: The point to find the nearest vertex to.
+// distance_upper_bound: The maximum distance between the point and the nearest vertex.
+//
+// Returns: The label of the nearest vertex.
+//
+inline int nearest_vertex_label(
+        __global const float4 *vertices,
+        __global const int *vertex_labels,
+        uint n_vertices,
+        float4 point,
+        float distance_upper_bound)
+{
+    float min_dist = distance_upper_bound * distance_upper_bound;
+    int best_label = -1;
+    for (uint i = 0; i < n_vertices; i++) {
+        float4 diff = vertices[i] - point;
+        float dist2 = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z;
+        if (dist2 < min_dist) {
+            min_dist = dist2;
+            best_label = vertex_labels[i];
+        }
+    }
+    return best_label;
+}
+
+
 // ATOMIC_ADD_GLOBAL_FLOAT
 // Adds two values and atomically store the result in the
 // first value. This is needed because OpenCL does
