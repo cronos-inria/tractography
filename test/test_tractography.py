@@ -45,8 +45,8 @@ class TestTractography(unittest.TestCase):
 class TestConnectome(unittest.TestCase):
     """Test the tg.connectome function"""
 
-    def test_cross(self):
-        """Test that the connectivity matrix has the expected shape and labels"""
+    def test_cross_deterministic(self):
+        """Test that the connectivity matrix from the deterministic algorithm has the expected shape and labels"""
 
         fod, wm, segmentation = test.data.cross()
         nib.save(fod, _TEST_RESULTS_DIR / "cross-fod.nii.gz")
@@ -54,7 +54,9 @@ class TestConnectome(unittest.TestCase):
         nib.save(segmentation, _TEST_RESULTS_DIR / "cross-segmentation.nii.gz")
         fod = tg.nifti.multiply(fod, wm)
         n_seeds = 10000
-        matrix, labels = tg.connectome(fod, segmentation, n_seeds=n_seeds)
+        config = tg.configuration.load(tg.Algorithm.DETERMINISTIC)
+        config.streamline.length.minimum = 5
+        matrix, labels = tg.connectome(fod, segmentation, n_seeds=n_seeds, config=config)
 
         # The crossing dataset has labels 1, 2, 3, 4.
         np.testing.assert_array_equal(labels, [1, 2, 3, 4])
@@ -72,3 +74,41 @@ class TestConnectome(unittest.TestCase):
         # The total number of connections should be positive, meaning some
         # streamlines did reach labeled regions.
         self.assertGreater(matrix.sum(), 0)
+
+        # Region 1 should be connected mostly to 2. Region 3 should be connected mostly to 4.
+        self.assertTrue(np.argmax(matrix[0]) == 1)
+        self.assertTrue(np.argmax(matrix[2]) == 3)
+
+    def test_cross_probabilistic(self):
+        """Test that the connectivity matrix from the probabilistic algorithm has the expected shape and labels"""
+
+        fod, wm, segmentation = test.data.cross()
+        nib.save(fod, _TEST_RESULTS_DIR / "cross-fod.nii.gz")
+        nib.save(wm, _TEST_RESULTS_DIR / "cross-wm.nii.gz")
+        nib.save(segmentation, _TEST_RESULTS_DIR / "cross-segmentation.nii.gz")
+        fod = tg.nifti.multiply(fod, wm)
+        n_seeds = 10000
+        config = tg.configuration.load(tg.Algorithm.PROBABILISTIC)
+        config.streamline.length.minimum = 5
+        matrix, labels = tg.connectome(fod, segmentation, n_seeds=n_seeds, config=config)
+
+        # The crossing dataset has labels 1, 2, 3, 4.
+        np.testing.assert_array_equal(labels, [1, 2, 3, 4])
+
+        # The matrix should be square with one row/column per label.
+        self.assertEqual(matrix.shape, (4, 4))
+
+        # The matrix should be symmetric (it is symmetrized in the public API).
+        np.testing.assert_array_equal(matrix, matrix.T)
+
+        # The diagonal should be zero or very small (streamlines connecting a
+        # region to itself are uncommon in a crossing geometry).
+        self.assertTrue(np.all(matrix.diagonal() < 0.1 * matrix.sum()))
+
+        # The total number of connections should be positive, meaning some
+        # streamlines did reach labeled regions.
+        self.assertGreater(matrix.sum(), 0)
+
+        # Region 1 should be connected mostly to 2. Region 3 should be connected mostly to 4.
+        self.assertTrue(np.argmax(matrix[0]) == 1)
+        self.assertTrue(np.argmax(matrix[2]) == 3)
