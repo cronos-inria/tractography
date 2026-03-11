@@ -161,4 +161,106 @@ class Diffusion:
         return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
 
 
-register(Algorithm.DIFFUSION, Diffusion, histogram)
+def connectome(
+    fod,
+    fod_affine,
+    seed_fod,
+    seed_fod_affine,
+    vertices,
+    vertex_labels,
+    n_labels,
+    n_seeds,
+    config,
+    distance_upper_bound=4.0,
+):
+    """Generate a connectome directly without storing streamlines.
+
+    Each streamline is seeded from the FOD, propagated using diffusion tracking,
+    and then its start and end points are matched to the nearest labelled vertex.
+    The corresponding matrix entry is atomically incremented.
+
+    Args:
+        fod: The FOD data array (4D).
+        fod_affine: The affine for the FOD image.
+        seed_fod: The masked seed FOD data array (4D).
+        seed_fod_affine: The affine for the seed FOD image.
+        vertices: World-space coordinates of labelled points (N, 3), as returned
+            by tractography.connectivity.convert_segmentation.
+        vertex_labels: Integer label for each vertex (N,), as returned by
+            tractography.connectivity.convert_segmentation.
+        n_labels: The number of unique labels (matrix dimension).
+        n_seeds: The number of seeds (streamlines) to generate.
+        config: The configuration object.
+        distance_upper_bound: Maximum distance between a streamline endpoint
+            and a vertex for the endpoint to be assigned that vertex's label.
+
+    Returns:
+        matrix: A (n_labels, n_labels) uint32 connectivity matrix.
+
+    """
+
+    n_threads = 1000
+    n_seeds_per_thread = np.ceil(n_seeds / n_threads)
+
+    mask = seed_fod[..., 0] > 0
+    voxels = np.array(np.nonzero(mask), dtype=np.float32).T
+    voxels = np.hstack((voxels, np.ones((len(voxels), 1))))
+    inline_fod = fod[mask]
+    randoms = np.random.randint(4294967295, size=(n_threads, 2))
+
+    fod_buffer = cl.new_read_only_buffer(fod.astype(np.float32))
+    fod_inverse_affine_buffer = cl.new_read_only_buffer(
+        np.linalg.inv(fod_affine).astype(np.float32)
+    )
+    seed_fod_buffer = cl.new_read_only_buffer(inline_fod.astype(np.float32))
+    seed_fod_voxels_buffer = cl.new_read_only_buffer(voxels.astype(np.float32))
+    seed_fod_affine_buffer = cl.new_read_only_buffer(
+        seed_fod_affine.astype(np.float32)
+    )
+    randoms_buffer = cl.new_buffer(randoms.astype(np.uint32))
+
+    vertices_homogeneous = np.c_[vertices, np.zeros((len(vertices), 1))]
+    vertices_buffer = cl.new_read_only_buffer(vertices_homogeneous.astype(np.float32))
+    vertex_labels_buffer = cl.new_read_only_buffer(vertex_labels.astype(np.int32))
+
+    conn_matrix = np.zeros((n_labels, n_labels), dtype=np.uint32)
+    conn_matrix_buffer = cl.new_buffer(conn_matrix)
+
+    values = {
+        "nx": fod.shape[0],
+        "ny": fod.shape[1],
+        "nz": fod.shape[2],
+        "nnz": len(voxels),
+        "n_coefficients": fod.shape[-1],
+        "n_steps": config.n_steps,
+        "n_seeds": n_threads,
+        "n_labels": n_labels,
+        "n_vertices": len(vertices),
+    }
+    program = cl.build_program(values, ["utils/seeds.cl", "diffusion/connectome.cl"])
+
+    args = (
+        fod_buffer,
+        fod_inverse_affine_buffer,
+        seed_fod_buffer,
+        seed_fod_voxels_buffer,
+        seed_fod_affine_buffer,
+        randoms_buffer,
+        vertices_buffer,
+        vertex_labels_buffer,
+        np.float32(config.step_size),
+        np.float32(config.save_at),
+        np.uint32(config.min_n_points),
+        np.float32(config.inverse_curvature),
+        np.float32(config.noise_variance),
+        np.float32(distance_upper_bound),
+        np.uint32(n_seeds_per_thread),
+        conn_matrix_buffer,
+    )
+    program.connectome(cl._queue, (n_threads,), None, *args)
+    cl.copy_from_buffer(conn_matrix_buffer, conn_matrix)
+
+    return conn_matrix
+
+
+register(Algorithm.DIFFUSION, Diffusion, histogram, connectome)

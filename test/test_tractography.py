@@ -112,3 +112,22 @@ class TestConnectome(unittest.TestCase):
         # Region 1 should be connected mostly to 2. Region 3 should be connected mostly to 4.
         self.assertTrue(np.argmax(matrix[0]) == 1)
         self.assertTrue(np.argmax(matrix[2]) == 3)
+
+    def test_cross_diffusion(self):
+        """Test that the connectivity matrix from the diffusion algorithm has the expected shape and labels"""
+
+        fod, wm, segmentation = test.data.cross()
+        fod = tg.nifti.multiply(fod, wm)
+        n_seeds = 10000
+        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
+        config.noise_variance = 0.01
+        config.streamline.length.minimum = 5
+        matrix, labels = tg.connectome(fod, segmentation, n_seeds=n_seeds, config=config)
+
+        np.testing.assert_array_equal(labels, [1, 2, 3, 4])
+        self.assertEqual(matrix.shape, (4, 4))
+        np.testing.assert_array_equal(matrix, matrix.T)
+        self.assertTrue(np.all(matrix.diagonal() < 0.1 * matrix.sum()))
+        self.assertGreater(matrix.sum(), 0)
+        self.assertTrue(np.argmax(matrix[0]) == 1)
+        self.assertTrue(np.argmax(matrix[2]) == 3)
