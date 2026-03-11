@@ -2,8 +2,11 @@ import unittest
 
 from tractography.algorithms import register, resolve, RegistryEntry, _REGISTRY
 from tractography.algorithms.configuration import Algorithm
+from tractography.algorithms.deterministic import connectome as deterministic_connectome
 from tractography.algorithms.deterministic import Deterministic, histogram as deterministic_histogram
+from tractography.algorithms.diffusion import connectome as diffusion_connectome
 from tractography.algorithms.diffusion import Diffusion, histogram as diffusion_histogram
+from tractography.algorithms.probabilistic import connectome as probabilistic_connectome
 from tractography.algorithms.probabilistic import Probabilistic, histogram as probabilistic_histogram
 from tractography.algorithms.transport import Transport, histogram as transport_histogram
 
@@ -52,6 +55,18 @@ class TestRegister(unittest.TestCase):
             with self.subTest(algorithm=algorithm):
                 self.assertIs(_REGISTRY[algorithm].histogram, histogram_fn)
 
+    def test_registered_connectomes(self):
+        """Algorithms with connectome support should expose the correct function"""
+        expected = {
+            Algorithm.DETERMINISTIC: deterministic_connectome,
+            Algorithm.PROBABILISTIC: probabilistic_connectome,
+            Algorithm.DIFFUSION: diffusion_connectome,
+            Algorithm.TRANSPORT: None,
+        }
+        for algorithm, connectome_fn in expected.items():
+            with self.subTest(algorithm=algorithm):
+                self.assertIs(_REGISTRY[algorithm].connectome, connectome_fn)
+
 
 class TestResolve(unittest.TestCase):
     """Test the algorithm resolution mechanism"""
@@ -86,6 +101,18 @@ class TestResolve(unittest.TestCase):
         for algorithm, histogram_fn in expected.items():
             with self.subTest(algorithm=algorithm):
                 self.assertIs(resolve(algorithm).histogram, histogram_fn)
+
+    def test_resolve_connectome(self):
+        """resolve().connectome should return the correct function"""
+        expected = {
+            Algorithm.DETERMINISTIC: deterministic_connectome,
+            Algorithm.PROBABILISTIC: probabilistic_connectome,
+            Algorithm.DIFFUSION: diffusion_connectome,
+            Algorithm.TRANSPORT: None,
+        }
+        for algorithm, connectome_fn in expected.items():
+            with self.subTest(algorithm=algorithm):
+                self.assertIs(resolve(algorithm).connectome, connectome_fn)
 
     def test_resolve_unknown_raises(self):
         """resolve() should raise ValueError for an unregistered algorithm"""
