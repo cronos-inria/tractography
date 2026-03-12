@@ -131,3 +131,21 @@ class TestConnectome(unittest.TestCase):
         self.assertGreater(matrix.sum(), 0)
         self.assertTrue(np.argmax(matrix[0]) == 1)
         self.assertTrue(np.argmax(matrix[2]) == 3)
+
+    def test_cross_transport(self):
+        """Test that the connectivity matrix from the transport algorithm has the expected shape and labels"""
+
+        fod, wm, segmentation = test.data.cross()
+        fod = tg.nifti.multiply(fod, wm)
+        n_seeds = 10000
+        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
+        config.streamline.length.minimum = 5
+        matrix, labels = tg.connectome(fod, segmentation, n_seeds=n_seeds, config=config)
+
+        np.testing.assert_array_equal(labels, [1, 2, 3, 4])
+        self.assertEqual(matrix.shape, (4, 4))
+        np.testing.assert_array_equal(matrix, matrix.T)
+        self.assertTrue(np.all(matrix.diagonal() < 0.1 * matrix.sum()))
+        self.assertGreater(matrix.sum(), 0)
+        self.assertTrue(np.argmax(matrix[0]) == 1)
+        self.assertTrue(np.argmax(matrix[2]) == 3)

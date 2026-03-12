@@ -8,6 +8,7 @@ from tractography.algorithms.diffusion import connectome as diffusion_connectome
 from tractography.algorithms.diffusion import Diffusion, histogram as diffusion_histogram
 from tractography.algorithms.probabilistic import connectome as probabilistic_connectome
 from tractography.algorithms.probabilistic import Probabilistic, histogram as probabilistic_histogram
+from tractography.algorithms.transport import connectome as transport_connectome
 from tractography.algorithms.transport import Transport, histogram as transport_histogram
 
 
@@ -61,7 +62,7 @@ class TestRegister(unittest.TestCase):
             Algorithm.DETERMINISTIC: deterministic_connectome,
             Algorithm.PROBABILISTIC: probabilistic_connectome,
             Algorithm.DIFFUSION: diffusion_connectome,
-            Algorithm.TRANSPORT: None,
+            Algorithm.TRANSPORT: transport_connectome,
         }
         for algorithm, connectome_fn in expected.items():
             with self.subTest(algorithm=algorithm):
@@ -108,7 +109,7 @@ class TestResolve(unittest.TestCase):
             Algorithm.DETERMINISTIC: deterministic_connectome,
             Algorithm.PROBABILISTIC: probabilistic_connectome,
             Algorithm.DIFFUSION: diffusion_connectome,
-            Algorithm.TRANSPORT: None,
+            Algorithm.TRANSPORT: transport_connectome,
         }
         for algorithm, connectome_fn in expected.items():
             with self.subTest(algorithm=algorithm):
