@@ -166,12 +166,17 @@ def tractogram(
 
     # Pad the seeds to have a multiple of the batch size.
     n_seeds = len(seeds)
+    if n_seeds == 0:
+        return nib.streamlines.Tractogram([], affine_to_rasmm=np.eye(4))
+
+    padded_seeds = list(seeds)
     extra_seeds = n_seeds % config.batch_size
-    seeds.extend([seeds[-1]] * (config.batch_size - extra_seeds))
+    if extra_seeds > 0:
+        padded_seeds.extend([padded_seeds[-1]] * (config.batch_size - extra_seeds))
 
     # Perform tractography in batches.
     all_streamlines = []
-    for s in np.array_split(seeds, len(seeds) // config.batch_size):
+    for s in np.array_split(padded_seeds, len(padded_seeds) // config.batch_size):
         streamlines = implementation.run(s)
 
         # Clean a bit.
