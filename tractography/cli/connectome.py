@@ -1,10 +1,11 @@
-"""Entry-point for the connectivity command of the CLI
+"""Entry-point for the connectome command of the CLI
 
-This module implements the connectivity subcommand of the tractography CLI. It
+This module implements the connectome subcommand of the tractography CLI. It
 allows the user to generate connectivity matrices from files.
 
 """
 
+import argparse
 from pathlib import Path
 
 import nibabel as nib
@@ -13,17 +14,21 @@ import numpy as np
 import tractography as tg
 
 
+_ALGORITHM = tg.Algorithm.TRANSPORT
+
+
 _DESCRIPTION = """
 Perform diffusion magnetic resonance imaging tractography but save only the
-connectivity matrix.
+connectome instead of the full streamlines. The connectome is saved as a .npz file 
+containing 'matrix' and 'labels' arrays.
 """
 
 _HELP = """
-generate a structural connectivity matrix
+generate a structural connectome
 """
 
-_ALGORITHM_HELP = """
-the algorithm used for tractography
+_ALGORITHM_HELP = f"""
+the algorithm used for tractography (default: {_ALGORITHM})
 """
 
 _IMAGE_HELP = """
@@ -34,23 +39,19 @@ _SEGMENTATION_HELP = """
 the filename of the segmentation image containing brain region labels
 """
 
-_CONNECTIVITY_HELP = """
-the filename of the generated connectivity matrix
+_CONNECTOME_HELP = """
+the filename of the generated connectome (saved as a .npz file containing 'matrix' and 'labels' arrays)
 """
 
 _MASK_HELP = """
 the filename of the mask used for tractography
 """
 
-_N_SEEDS_HELP = """
-the total number of seeds to generate (default: 100000)
-"""
-
 
 def main(
     image_path: Path,
     segmentation_path: Path,
-    connectivity_path: Path,
+    connectome_path: Path,
     n_seeds: int,
     algorithm: tg.Algorithm = tg.Algorithm.TRANSPORT,
     **kwargs,
@@ -72,28 +73,28 @@ def main(
     # Load the volumetric segmentation.
     segmentation = nib.load(segmentation_path)
 
-    # Generate the connectivity matrix.
+    # Generate the connectome.
     # connectome() handles seeding, tracking, and mapping internally.
-    matrix, _ = tg.connectome(fod, segmentation, n_seeds, config)
+    matrix, labels = tg.connectome(fod, segmentation, n_seeds, config)
 
-    # Save the connectivity matrix.
-    np.save(connectivity_path, matrix)
+    # Save the connectome.
+    np.savez(connectome_path, matrix=matrix, labels=labels)
 
 
 def add_parser(subparsers):
-    """Add the subparser for the connectivity subcommand"""
+    """Add the subparser for the connectome subcommand"""
     subparser = subparsers.add_parser(
-        "connectivity", description=_DESCRIPTION, help=_HELP
+        "connectome", description=_DESCRIPTION, help=_HELP
     )
     subparser.add_argument("image_path", type=Path, help=_IMAGE_HELP)
     subparser.add_argument("segmentation_path", type=Path, help=_SEGMENTATION_HELP)
-    subparser.add_argument("connectivity_path", type=Path, help=_CONNECTIVITY_HELP)
-    subparser.add_argument("--n_seeds", type=int, default=100000, help=_N_SEEDS_HELP)
+    subparser.add_argument("connectome_path", type=Path, help=_CONNECTOME_HELP)
     subparser.add_argument("--mask", type=Path, help=_MASK_HELP)
-
+    tg.cli.utils.add_n_seeds_argument(subparser)
     subparser.add_argument(
         "--algorithm",
         type=tg.Algorithm,
+        default=_ALGORITHM,
         choices=list(tg.Algorithm),
         help=_ALGORITHM_HELP,
     )
@@ -103,7 +104,3 @@ def add_parser(subparsers):
 
     subparser.set_defaults(func=main)
     return subparser
-
-
-if __name__ == "__main__":
-    main()

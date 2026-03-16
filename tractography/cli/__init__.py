@@ -9,7 +9,7 @@ DESCRIPTION = """\
 """
 
 
-def parse_arguments(args: str | None = None):
+def parse_arguments(args: list[str] | None = None):
 
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     subparsers = parser.add_subparsers()
