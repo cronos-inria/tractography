@@ -13,7 +13,6 @@ import numpy as np
 import tractography as tg
 
 
-_N_SEEDS = 1000000
 _ALGORITHM = tg.Algorithm.DIFFUSION
 
 
@@ -30,7 +29,7 @@ generate diffusion MRI tractography histogram
 
 
 _ALGORITHM_HELP = f"""
-the algorithm used for tractography (default is {_ALGORITHM}
+the algorithm used for tractography (default is {_ALGORITHM})
 """
 
 _FOD_HELP = """
@@ -45,17 +44,13 @@ _HISTOGRAM_HELP = """
 the filename of the generated histogram
 """
 
-_N_SEEDS_HELP = f"""
-the number of seeds to generate (default is {_N_SEEDS})
-"""
-
 
 def main(
     fod_path: Path,
     seed_mask_path: Path,
     histogram_path: Path,
+    n_seeds: int,
     algorithm: tg.Algorithm = tg.Algorithm.DIFFUSION,
-    n_seeds: int = _N_SEEDS,
     **kwargs,
 ):
     """Entry-point of the tractography CLI"""
@@ -78,14 +73,7 @@ def add_parser(subparsers):
     subparser.add_argument("fod_path", type=Path, help=_FOD_HELP)
     subparser.add_argument("seed_mask_path", type=Path, help=_SEED_MASK_HELP)
     subparser.add_argument("histogram_path", type=Path, help=_HISTOGRAM_HELP)
-    subparser.add_argument(
-        "--number-of-seeds",
-        "-n",
-        dest="n_seeds",
-        type=np.uint64,
-        default=_N_SEEDS,
-        help=_N_SEEDS_HELP,
-    )
+    tg.cli.utils.add_n_seeds_argument(subparser)
     subparser.add_argument(
         "--algorithm",
         type=tg.Algorithm,
@@ -99,7 +87,3 @@ def add_parser(subparsers):
 
     subparser.set_defaults(func=main)
     return subparser
-
-
-if __name__ == "__main__":
-    main()
