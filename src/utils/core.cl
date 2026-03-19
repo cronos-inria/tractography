@@ -3,6 +3,12 @@
 
 #define PI 3.14159265359f
 
+typedef struct {
+    float value;
+    float dtheta;
+    float dphi;
+} model_value_t;
+
 // NEAREST_VERTEX_LABEL
 // Finds the nearest vertex to a given point and returns its label.
 // Returns -1 if no vertex is within the distance bound.

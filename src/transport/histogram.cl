@@ -71,10 +71,10 @@ __kernel void histogram(
 			}
 
 			// Update the orientation.
-			orientation = update_orientation(fod, ylm, ylm_dp, ylm_dt, index,
-				dims, orientation, 0, dt, gamma, 0.0f);
+		    model_value_t evaluated_model = evaluate_model(fod, dims, voxel, orientation);
+		    orientation = update_orientation(evaluated_model, orientation, 0, dt, gamma, 0.0f);
 
-			// Move the point forwared and add it to the streamline.
+			// Move the point forward and add it to the streamline.
 			location += dt * orientation;
 
 			// Move time forward and record point if necessary.

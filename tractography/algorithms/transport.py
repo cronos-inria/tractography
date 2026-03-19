@@ -139,7 +139,7 @@ class Transport:
             self._streamlines,
             self._lengths,
         )
-        cl.run_program(self._program, args, self._n_streamlines)
+        cl.run_tractogram(self._program, args, self._n_streamlines)
         streamlines = np.zeros(
             (self._n_streamlines, self._config.n_steps, 4), dtype=np.float32
         )
