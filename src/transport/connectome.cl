@@ -73,21 +73,9 @@ __kernel void connectome(
                 break;
             }
 
-            float2 angles = cart2sph(orientation);
-            ishtmtx(angles.x, angles.y, ylm, ylm_dp, ylm_dt);
-            orientation = update_orientation(
-                (__global const float *) fod,
-                ylm,
-                ylm_dp,
-                ylm_dt,
-                index,
-                dims,
-                orientation,
-                0,
-                dt,
-                gamma,
-                0.0f
-            );
+            // Update the orientation.
+            model_value_t evaluated_model = evaluate_model(fod, dims, voxel, orientation);
+            orientation = update_orientation(evaluated_model, orientation, 0, dt, gamma, 0.0f);
             if (length(orientation) < 0.5f) {
                 break;
             }

@@ -1,7 +1,7 @@
 #include "utils/spharm.cl"
 #include "diffusion/core.cl"
 
-__kernel void tractography(
+__kernel void tractogram(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],
         __global const float4 affine[4],
         __global const float4 seeds[$n_streamlines][2],
@@ -43,12 +43,10 @@ __kernel void tractography(
         }
 
 		// Update the orientation.
-		float2 angles = cart2sph(orientation);
-		ishtmtx(angles.x, angles.y, ylm, ylm_dp, ylm_dt);
-		orientation = update_orientation(fod, ylm, ylm_dp, ylm_dt, index,
-			dims, orientation, 0, dt, gamma, 0.0f);
+		model_value_t evaluated_model = evaluate_model(fod, dims, voxel, orientation);
+		orientation = update_orientation(evaluated_model, orientation, 0, dt, gamma, 0.0f);
 
-		// Move the point forwared and add it to the streamline.
+		// Move the point forward and add it to the streamline.
 		point += dt * orientation;
 		
 		// Move time forward and record point if necessary.

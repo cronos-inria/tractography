@@ -1,8 +1,9 @@
 #include "utils/spharm.cl"
 #include "diffusion/core.cl"
 
-__kernel void tractography(
+__kernel void tractogram(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],
+		__global const uint4 *fod_dims,
         __global const float4 affine[4],
         __global const float4 seeds[$n_streamlines][2],
         __global uint2 randoms[$n_streamlines],
@@ -20,8 +21,9 @@ __kernel void tractography(
     uint gid = get_global_id(0);
 	if (gid >= $n_streamlines) return;
 
+	// Copy the random state and the model dimensions to local memory.
 	uint2 state = randoms[gid];
-	uint4 dims = {$nx, $ny, $nz, $n_coefficients};
+	uint4 dims = *fod_dims;
 
 	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
 
@@ -50,11 +52,10 @@ __kernel void tractography(
         }
 
 		// Evaluate the value of the fODF and its derivatives.	
-		float2 angles = cart2sph(orientation);
-		ishtmtx(angles.x, angles.y, ylm, ylm_dp, ylm_dt);
-		orientation = update_orientation(fod, ylm, ylm_dp, ylm_dt, index, dims, orientation, &state, dt, gamma, noise_variance);
+		model_value_t evaluated_model = evaluate_model(fod, dims, voxel, orientation);
+		orientation = update_orientation(evaluated_model, orientation, &state, dt, gamma, noise_variance);
 
-		// Move the point forwared and add it to the streamline.
+		// Move the point forward and add it to the streamline.
 		point += dt * orientation;
 		
 		// Move time forward and record point if necessary.

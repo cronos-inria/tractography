@@ -112,6 +112,10 @@ class Diffusion:
         seeds_array = np.empty((n_streamlines, 8), dtype=np.float32)
         self._seeds = cl.new_read_only_buffer(seeds_array)
 
+        # Create the buffer for data dimensions.
+        dims = np.array(odf.shape, dtype=np.uint32)
+        self._dims = cl.new_read_only_buffer(dims)
+
         # Reserve space for the streamlines on the device. The are
         # stored as float4.
         streamlines_nbytes = n_streamlines * config.n_steps * 4 * 4
@@ -140,6 +144,7 @@ class Diffusion:
         # Track streamlines.
         args = (
             self._odf,
+            self._dims,
             self._iaffine,
             self._seeds,
             self._randoms,
@@ -150,7 +155,7 @@ class Diffusion:
             self._streamlines,
             self._lengths,
         )
-        cl.run_program(self._program, args, self._n_streamlines)
+        cl.run_tractogram(self._program, args, self._n_streamlines)
         streamlines = np.zeros(
             (self._n_streamlines, self._config.n_steps, 4), dtype=np.float32
         )
