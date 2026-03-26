@@ -1,4 +1,9 @@
-#include "utils/spharm.cl"
+#ifndef __TRANSPORT_TRACTOGRAM__
+#define __TRANSPORT_TRACTOGRAM__
+
+#include "utils/core.cl"
+#define $model
+#include "models/select.cl"
 #include "diffusion/core.cl"
 
 __kernel void tractogram(
@@ -22,9 +27,6 @@ __kernel void tractogram(
 	float4 point = seeds[gid][0];
 	float4 orientation = seeds[gid][1];
 
-	float ylm[$n_coefficients];
-	float ylm_dt[$n_coefficients];
-	float ylm_dp[$n_coefficients]; 
 	streamlines[gid][0] = point;
 	size_t n = 1;
 	float time = 0;
@@ -61,3 +63,4 @@ __kernel void tractogram(
 	lengths[gid] = n;
 }
 
+#endif

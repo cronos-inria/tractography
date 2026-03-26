@@ -1,4 +1,8 @@
-#include "utils/spharm.cl"
+#ifndef __DIFFUSION_HISTOGRAM__
+#define __DIFFUSION_HISTOGRAM__
+
+#define $model
+#include "models/select.cl"
 #include "diffusion/core.cl"
 
 __kernel void histogram(
@@ -94,3 +98,5 @@ __kernel void histogram(
 	}
 	randoms[gid] = state;
 }
+
+#endif

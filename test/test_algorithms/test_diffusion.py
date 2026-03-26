@@ -6,6 +6,7 @@ import numpy as np
 
 import tractography as tg
 import test
+import test.data.tensor
 
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
@@ -41,6 +42,36 @@ class TestDiffusionHistogram(unittest.TestCase):
             np.linalg.norm(histogram - fod.get_fdata())
             / wm.get_fdata().size < 0.005
         )
+
+    def test_cross_dti(self):
+        """Test histogram generation using DTI model on the cross dataset"""
+
+        tensor, wm, _ = test.data.tensor.cross((20, 20, 1))
+        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
+
+        nib.save(tensor, _TEST_RESULTS_DIR / "histogram-cross-dti-tensor.nii.gz")
+        nib.save(wm, _TEST_RESULTS_DIR / "histogram-cross-dti-wm.nii.gz")
+
+        histogram = tg.algorithms.diffusion.histogram(
+            tensor.get_fdata(),
+            tensor.affine,
+            tensor.get_fdata(),
+            tensor.affine,
+            1000,
+            config,
+        )
+        nib.save(
+            nib.Nifti1Image(histogram, tensor.affine),
+            _TEST_RESULTS_DIR / "histogram-cross-dti-histogram.nii.gz",
+        )
+
+        # Histogram should have same shape as input tensor and be finite
+        self.assertEqual(histogram.shape, tensor.get_fdata().shape)
+        self.assertTrue(np.isfinite(histogram).all())
+        
+        # In voxels with tensor data, histogram should be non-zero
+        mask = tensor.get_fdata()[..., 0] > 0
+        self.assertTrue((histogram[mask, 0] > 0).any())
 
 
 class TestDiffusion(unittest.TestCase):
@@ -86,6 +117,34 @@ class TestDiffusion(unittest.TestCase):
         tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
         tck = nib.streamlines.TckFile(tractogram)
         tck.save(_TEST_RESULTS_DIR / "cross-streamlines.tck")
+
+    def test_circle_dti(self):
+        """Test diffusion tractography on the circle dataset, with DTI data"""
+
+        # Prepare the data.
+        tensor, wm, _ = test.data.tensor.circle((20, 20, 1), radius=5, width=2)
+        nib.save(tensor, _TEST_RESULTS_DIR / "circle-dti-tensor.nii.gz")
+        nib.save(wm, _TEST_RESULTS_DIR / "circle-dti-wm.nii.gz")
+        seeds = [tg.seeds.Seed([19.0, 22.5, 0.0], [-1.0, 0.0, 0.0])] * 10
+
+        # Generate the tractogram.
+        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
+        config.inverse_curvature = 10.0
+        config.noise_variance = 0.05
+        algorithm = tg.algorithms.Diffusion(
+            tensor.get_fdata(), tensor.affine, len(seeds), config
+        )
+        streamlines = algorithm.run(seeds)
+
+        # Save the streamlines for QA.
+        tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
+        tck = nib.streamlines.TckFile(tractogram)
+        tck.save(_TEST_RESULTS_DIR / "circle-dti-streamlines.tck")
+
+        self.assertEqual(len(streamlines), len(seeds))
+        self.assertTrue(any(len(streamline) > 1 for streamline in streamlines))
+        for streamline in streamlines:
+            self.assertTrue(np.isfinite(streamline).all())
 
     def test_circle(self):
         """Test tractography on the circle dataset"""
