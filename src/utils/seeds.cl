@@ -1,7 +1,9 @@
 #ifndef __SEEDS__
 #define __SEEDS__
 
-#include "utils/spharm.cl"
+#include "utils/core.cl"
+#define $model
+#include "models/select.cl"
 
 #define N_DIRECTIONS 1000
 
@@ -24,7 +26,7 @@ float4 fibonacci_sphere(uint n, uint n_points)
 
 // Returns an orientation sampled from a single FOD.
 float4 sample_fod(
-		__global const float fod[$n_coefficients],
+		const float fod[$n_coefficients],
 		uint2* state)
 {
 	// Note: The Fibonacci points are re-evaluated twice. This is inefficient,
@@ -34,7 +36,9 @@ float4 sample_fod(
 	// Find the valid orientations.
 	float sum = 0;
 	for (size_t i = 0; i < N_DIRECTIONS; i++) {
-		sum += max(shval(fod, fibonacci_sphere(i, N_DIRECTIONS)), 0.0f);;
+		float4 p = fibonacci_sphere(i, N_DIRECTIONS);
+		model_value_t evaluated_fod = evaluate_interpolated_model(fod, $n_coefficients, p);
+		sum += max(evaluated_fod.value, 0.0f);;
 	}
 
 	// Pick a random direction according to the shape of the FOD.
@@ -42,7 +46,8 @@ float4 sample_fod(
 	float cs = 0;
 	for (int i = 0; i < N_DIRECTIONS; i++) {
 		float4 p = fibonacci_sphere(i, N_DIRECTIONS);
-		cs += max(shval(fod, p), 0.0f);;
+		model_value_t evaluated_fod = evaluate_interpolated_model(fod, $n_coefficients, p);
+		cs += max(evaluated_fod.value, 0.0f);;
 		if (cs > rand * sum) {
 			return p;
 		}
@@ -70,8 +75,14 @@ void seed_from_fod(
 
 	// Generate a random point uniformly in the voxel and importance sample
 	// the local FOD.
-	voxel += (float4) {randu(state) - 0.5f, randu(state) - 0.5f, randu(state) - 0.5f, 0.0f}; 	
-	*orientation = sample_fod(fod[voxel_index], state);
+	voxel += (float4) {randu(state) - 0.5f, randu(state) - 0.5f, randu(state) - 0.5f, 0.0f};
+
+	// Because of the sparse representation, we can only do nearest-neighbor interpolation.
+	float interpolated_fod[$n_coefficients];
+	for (uint i = 0; i < $n_coefficients; i++) {
+		interpolated_fod[i] = fod[voxel_index][i];
+	}
+	*orientation = sample_fod(interpolated_fod, state);
 
 	// Convert to world coordinates.
 	*location = apply_affine(affine, voxel);

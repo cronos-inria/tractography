@@ -31,7 +31,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     n_seeds_per_thread = np.ceil(n_seeds / n_threads)
 
     # Prepare the data necessary for the seeds.
-    mask = seed_fod[..., 0] > 0
+    mask = np.any(seed_fod != 0, axis=-1)
     voxels = np.array(np.nonzero(mask), dtype=np.float32).T
     voxels = np.hstack((voxels, np.ones((len(voxels), 1))))
     inline_fod = fod[mask]
@@ -48,7 +48,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     seed_fod_affine_buffer = cl.new_read_only_buffer(seed_fod_affine.astype(np.float32))
     randoms_buffer = cl.new_buffer(randoms.astype(np.uint32))
 
-    hist = np.zeros(fod.shape, dtype=np.float32)
+    hist = np.zeros(fod.shape[:3] + (45,), dtype=np.float32)
     hist_buffer = cl.new_buffer(hist)
 
     # Set constants in the OpenCL code.

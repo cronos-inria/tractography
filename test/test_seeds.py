@@ -8,6 +8,7 @@ import numpy as np
 
 import tractography as tg
 import test
+import test.data.tensor
 
 _TEST_RESULTS_DIR = Path(__file__).parents[1] / "test-results" / "seeds"
 
@@ -119,3 +120,75 @@ class TestOpenCLFromFOD(unittest.TestCase):
         tg.seeds.save(
             _TEST_RESULTS_DIR / "gpu-simple-seeds.tck", tg.seeds.from_array(seeds)
         )
+
+    @staticmethod
+    def _orientation_second_moment(orientations, weights=None):
+        if weights is None:
+            weights = np.full(len(orientations), 1.0 / len(orientations))
+        return np.einsum("n,ni,nj->ij", weights, orientations, orientations)
+
+    @staticmethod
+    def _sh_probabilities(coefficients, directions):
+        azimuths, colatitudes, _ = tg.core.cart2sph(*directions.T)
+        ishtmtx, _ = tg.core.ishtmtx(azimuths, colatitudes, 45)
+        values = np.dot(ishtmtx, coefficients)
+
+        scaled = 100.0 * values
+        weights = np.where(
+            scaled < 30.0,
+            np.log1p(np.exp(np.clip(scaled, -700.0, 30.0))) / 100.0,
+            values,
+        )
+        probabilities = np.maximum(weights, 0.0)
+        return probabilities / np.sum(probabilities)
+
+    @staticmethod
+    def _dti_probabilities(coefficients, directions):
+        tensor = np.array(
+            [
+                [coefficients[0], coefficients[3], coefficients[4]],
+                [coefficients[3], coefficients[1], coefficients[5]],
+                [coefficients[4], coefficients[5], coefficients[2]],
+            ]
+        )
+        values = np.einsum("ni,ij,nj->n", directions, tensor, directions)
+        probabilities = np.maximum(values, 0.0)
+        return probabilities / np.sum(probabilities)
+
+    def test_orientation_distribution_matches_sh_fod(self):
+        n_seeds = 60000
+        directions = tg.core.fibonacci_sphere(1000)
+
+        sh_fod, _, _ = test.data.cross()
+        coefficients = sh_fod.get_fdata()[5, 1, 0]
+        fod = np.zeros((1, 1, 1, 45), dtype=np.float32)
+        fod[0, 0, 0] = coefficients
+
+        seeds = tg.seeds.from_fod(fod, np.eye(4), n_seeds, as_array=True, use_opencl=True)
+        orientations = seeds[:, 4:7]
+
+        expected = self._orientation_second_moment(
+            directions, self._sh_probabilities(coefficients, directions)
+        )
+        empirical = self._orientation_second_moment(orientations)
+
+        np.testing.assert_allclose(empirical, expected, atol=2e-2)
+
+    def test_orientation_distribution_matches_dti_fod(self):
+        n_seeds = 60000
+        directions = tg.core.fibonacci_sphere(1000)
+
+        dti_fod, _, _ = test.data.tensor.cross()
+        coefficients = dti_fod.get_fdata()[10, 1, 0]
+        fod = np.zeros((1, 1, 1, 6), dtype=np.float32)
+        fod[0, 0, 0] = coefficients
+
+        seeds = tg.seeds.from_fod(fod, np.eye(4), n_seeds, as_array=True, use_opencl=True)
+        orientations = seeds[:, 4:7]
+
+        expected = self._orientation_second_moment(
+            directions, self._dti_probabilities(coefficients, directions)
+        )
+        empirical = self._orientation_second_moment(orientations)
+
+        np.testing.assert_allclose(empirical, expected, atol=2e-2)

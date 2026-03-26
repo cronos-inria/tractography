@@ -9,6 +9,7 @@ import numpy as np
 import numpy.typing as npt
 
 import tractography as tg
+from tractography.algorithms.configuration import LocalModel
 
 
 @dataclass
@@ -129,7 +130,7 @@ def from_fod(
     if use_opencl:
 
         # Use a sparse format for the FOD.
-        mask = fod[..., 0] > 0
+        mask = np.any(fod != 0, axis=-1)
         indices = np.array(np.nonzero(mask), dtype=np.float32).T
         indices = np.hstack((indices, np.ones((len(indices), 1)))).astype(np.float32)
         inline_fod = fod[mask].astype(np.float32)
@@ -144,7 +145,9 @@ def from_fod(
         seeds_buffer = tg.algorithms.opencl.new_write_only_buffer(4 * 8 * n_seeds)
 
         # Compile the OpenCL program that generates seeds.
+        model = LocalModel.from_shape(fod.shape)
         values = {
+            "model": str(model),
             "nnz": len(indices),
             "n_coefficients": fod.shape[-1],
             "n_seeds": n_seeds,

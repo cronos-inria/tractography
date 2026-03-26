@@ -3,6 +3,9 @@
 
 #define PI 3.14159265359f
 
+// For now, the histograms are always expressed in spherical harmonics with 45 coefficients.
+#define HISTOGRAM_N_COEFFICIENTS 45
+
 typedef struct {
     float value;
     float dtheta;

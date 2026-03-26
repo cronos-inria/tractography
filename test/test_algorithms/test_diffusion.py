@@ -9,13 +9,37 @@ import test
 import test.data.tensor
 
 
-_OPENCL_DIR = Path(__file__).parents[2] / "src"
 _TEST_RESULTS_DIR = (
     Path(__file__).parents[2] / "test-results" / "algorithms" / "diffusion"
 )
 
 
 class TestDiffusionHistogram(unittest.TestCase):
+
+    @staticmethod
+    def _dti_probabilities(coefficients, directions):
+        tensor = np.array(
+            [
+                [coefficients[0], coefficients[3], coefficients[4]],
+                [coefficients[3], coefficients[1], coefficients[5]],
+                [coefficients[4], coefficients[5], coefficients[2]],
+            ]
+        )
+        values = np.einsum("ni,ij,nj->n", directions, tensor, directions)
+        weights = np.maximum(values, 0.0)
+        return weights / np.sum(weights)
+
+    @staticmethod
+    def _sh_probabilities(coefficients, directions):
+        azimuths, colatitudes, _ = tg.core.cart2sph(*directions.T)
+        ishtmtx, _ = tg.core.ishtmtx(azimuths, colatitudes, 45)
+        values = np.dot(ishtmtx, coefficients)
+        weights = np.maximum(values, 0.0)
+        return weights / np.sum(weights)
+
+    @staticmethod
+    def _orientation_second_moment(directions, probabilities):
+        return np.einsum("n,ni,nj->ij", probabilities, directions, directions)
 
     def setUp(self):
         _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -46,11 +70,12 @@ class TestDiffusionHistogram(unittest.TestCase):
     def test_cross_dti(self):
         """Test histogram generation using DTI model on the cross dataset"""
 
-        tensor, wm, _ = test.data.tensor.cross((20, 20, 1))
+        tensor, wm, _ = test.data.tensor.cross()
+        tensor = tg.nifti.multiply(tensor, wm)
         config = tg.configuration.load(tg.Algorithm.DIFFUSION)
 
-        nib.save(tensor, _TEST_RESULTS_DIR / "histogram-cross-dti-tensor.nii.gz")
-        nib.save(wm, _TEST_RESULTS_DIR / "histogram-cross-dti-wm.nii.gz")
+        nib.loadsave.save(tensor, _TEST_RESULTS_DIR / "histogram-cross-dti-tensor.nii.gz")
+        nib.loadsave.save(wm, _TEST_RESULTS_DIR / "histogram-cross-dti-wm.nii.gz")
 
         histogram = tg.algorithms.diffusion.histogram(
             tensor.get_fdata(),
@@ -60,18 +85,29 @@ class TestDiffusionHistogram(unittest.TestCase):
             1000,
             config,
         )
-        nib.save(
-            nib.Nifti1Image(histogram, tensor.affine),
+        nib.loadsave.save(
+            nib.nifti1.Nifti1Image(histogram, tensor.affine),
             _TEST_RESULTS_DIR / "histogram-cross-dti-histogram.nii.gz",
         )
 
-        # Histogram should have same shape as input tensor and be finite
-        self.assertEqual(histogram.shape, tensor.get_fdata().shape)
+        # Histogram should have same shape as input tensor and be finite.
+        self.assertEqual(histogram.shape[:3], tensor.get_fdata().shape[:3])
         self.assertTrue(np.isfinite(histogram).all())
-        
-        # In voxels with tensor data, histogram should be non-zero
-        mask = tensor.get_fdata()[..., 0] > 0
-        self.assertTrue((histogram[mask, 0] > 0).any())
+
+        # Compare local directional distributions in a common basis.
+        directions = tg.core.fibonacci_sphere(1000)
+        voxel = (5, 1, 0)
+        dti_coefficients = tensor.get_fdata()[voxel]
+        hist_coefficients = histogram[voxel]
+
+        expected = self._orientation_second_moment(
+            directions, self._dti_probabilities(dti_coefficients, directions)
+        )
+        observed = self._orientation_second_moment(
+            directions, self._sh_probabilities(hist_coefficients, directions)
+        )
+
+        np.testing.assert_allclose(observed, expected, atol=3e-2)
 
 
 class TestDiffusion(unittest.TestCase):
@@ -98,6 +134,27 @@ class TestDiffusion(unittest.TestCase):
         tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
         tck = nib.streamlines.TckFile(tractogram)
         tck.save(_TEST_RESULTS_DIR / "uniform-streamlines.tck")
+
+    def test_cross_dti(self):
+        """Test tractography on the DTI cross dataset"""
+
+        # Prepare the data.
+        fod, wm, _ = test.data.tensor.cross()
+        nib.nifti1.save(fod, _TEST_RESULTS_DIR / "cross-dti-tensor.nii.gz")
+        nib.nifti1.save(wm, _TEST_RESULTS_DIR / "cross-dti-wm.nii.gz")
+        seeds = tg.seeds.from_mask(wm.get_fdata(), wm.affine, 1000)
+
+        # Generate the tractogram.
+        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
+        config.inverse_curvature = 5.0
+        config.noise_variance = 0.05
+        algorithm = tg.algorithms.Diffusion(fod.get_fdata(), fod.affine, len(seeds), config)
+        streamlines = algorithm.run(seeds)
+
+        # Save the streamlines for QA.
+        tractogram = nib.streamlines.tractogram.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
+        tck = nib.streamlines.tck.TckFile(tractogram)
+        tck.save(_TEST_RESULTS_DIR / "cross-dti-streamlines.tck")
 
     def test_cross(self):
         """Test tractography on the cross dataset"""
