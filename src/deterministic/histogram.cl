@@ -1,3 +1,4 @@
+#include "utils/core.cl"
 #include "deterministic/core.cl"
 
 __kernel void histogram(
@@ -12,7 +13,7 @@ __kernel void histogram(
 		float save_at,
 		float max_angle,
 		uint seeds_per_thread,
-        __global float hist[$nx][$ny][$nz][$n_coefficients])
+        __global float hist[$nx][$ny][$nz][HISTOGRAM_N_COEFFICIENTS])
 {
     uint gid = get_global_id(0);
 	if (gid >= $n_seeds) return;
@@ -40,10 +41,10 @@ __kernel void histogram(
 		float4 orientation;
 		seed_from_fod(seed_fod, seed_fod_voxels, local_seed_fod_affine, &state, &location, &orientation);
 
-		float ylm[$n_coefficients];
-		float ylm_dt[$n_coefficients];
-		float ylm_dp[$n_coefficients]; 
-		float coefficients[$n_coefficients] = {0};
+		float ylm[HISTOGRAM_N_COEFFICIENTS];
+		float ylm_dt[HISTOGRAM_N_COEFFICIENTS];
+		float ylm_dp[HISTOGRAM_N_COEFFICIENTS]; 
+		float coefficients[HISTOGRAM_N_COEFFICIENTS] = {0};
 		uint3 previous_index = {0, 0, 0};
 		uint3 index = {0, 0, 0};
 
@@ -63,12 +64,12 @@ __kernel void histogram(
 
 			// Add the current orientation to the histogram.
 			if (previous_index.x == index.x && previous_index.y == index.y && previous_index.z == index.z) {
-				for (size_t i = 0; i < $n_coefficients; i++) {
+				for (size_t i = 0; i < HISTOGRAM_N_COEFFICIENTS; i++) {
 					coefficients[i] += ylm[i];
 				}
 			}
 			else {
-				for (size_t i = 0; i < $n_coefficients; i++) {
+				for (size_t i = 0; i < HISTOGRAM_N_COEFFICIENTS; i++) {
 					atomic_add_global_float(hist[previous_index.x][previous_index.y][previous_index.z] + i, coefficients[i]);
 					coefficients[i] = ylm[i];
 				}
@@ -96,7 +97,7 @@ __kernel void histogram(
 			}
 		}
 		if (previous_index.x == index.x && previous_index.y == index.y && previous_index.z == index.z) {
-			for (size_t i = 0; i < $n_coefficients; i++) {
+			for (size_t i = 0; i < HISTOGRAM_N_COEFFICIENTS; i++) {
 				atomic_add_global_float(hist[previous_index.x][previous_index.y][previous_index.z] + i, coefficients[i]);
 			}
 		}

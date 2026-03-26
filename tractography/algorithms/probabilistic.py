@@ -4,7 +4,7 @@ import trimesh
 
 import tractography as tg
 from . import opencl as cl
-from .configuration import Algorithm, BaseConfiguration
+from .configuration import Algorithm, BaseConfiguration, LocalModel
 from . import register
 
 
@@ -31,7 +31,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     n_seeds_per_thread = np.ceil(n_seeds / n_threads)
 
     # Prepare the data necessary for the seeds.
-    mask = seed_fod[..., 0] > 0
+    mask = np.any(seed_fod != 0, axis=-1)
     voxels = np.array(np.nonzero(mask), dtype=np.float32).T
     voxels = np.hstack((voxels, np.ones((len(voxels), 1))))
     inline_fod = fod[mask]
@@ -63,11 +63,15 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     seed_fod_affine_buffer = cl.new_read_only_buffer(seed_fod_affine.astype(np.float32))
     randoms_buffer = cl.new_buffer(randoms.astype(np.uint32))
 
-    hist = np.zeros(fod.shape, dtype=np.float32)
+    hist = np.zeros(fod.shape[:3] + (45,), dtype=np.float32)
     hist_buffer = cl.new_buffer(hist)
+
+    # Determine the local model based on the data shape.
+    model = LocalModel.from_shape(fod.shape)
 
     # Set constants in the OpenCL code.
     values = {
+        "model": str(model),
         "nx": fod.shape[0],
         "ny": fod.shape[1],
         "nz": fod.shape[2],
@@ -301,8 +305,12 @@ def connectome(fod, fod_affine, seed_fod, seed_fod_affine, vertices, vertex_labe
     conn_matrix = np.zeros((n_labels, n_labels), dtype=np.uint32)
     conn_matrix_buffer = cl.new_buffer(conn_matrix)
 
+    # Determine the local model based on the data shape.
+    model = LocalModel.from_shape(fod.shape)
+
     # Set constants in the OpenCL code.
     values = {
+        "model": str(model),
         "nx": fod.shape[0],
         "ny": fod.shape[1],
         "nz": fod.shape[2],
