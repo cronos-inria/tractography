@@ -1,4 +1,8 @@
-#include "utils/spharm.cl"
+#ifndef __DIFFUSION_TRACTOGRAM__
+#define __DIFFUSION_TRACTOGRAM__
+
+#define $model
+#include "models/select.cl"
 #include "diffusion/core.cl"
 
 __kernel void tractogram(
@@ -71,3 +75,4 @@ __kernel void tractogram(
 	randoms[gid] = state;
 }
 
+#endif

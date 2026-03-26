@@ -1,8 +1,9 @@
-#ifndef __TRANSPORT_CONNECTOME___
-#define __TRANSPORT_CONNECTOME___
+#ifndef __TRANSPORT_CONNECTOME__
+#define __TRANSPORT_CONNECTOME__
 
 #include "utils/core.cl"
-#include "utils/spharm.cl"
+#define $model
+#include "models/select.cl"
 #include "diffusion/core.cl"
 
 __kernel void connectome(

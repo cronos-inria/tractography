@@ -8,6 +8,7 @@ import scipy.interpolate as si
 
 import tractography as tg
 import test
+import test.data.tensor
 
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
@@ -99,6 +100,26 @@ class TestTransport(unittest.TestCase):
         tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
         tck = nib.streamlines.TckFile(tractogram)
         tck.save(_TEST_RESULTS_DIR / "cross-streamlines.tck")
+
+    def test_circle_dti(self):
+        """Test tractography on the circle dataset, with DTI data"""
+
+        # Prepare the data.
+        fod, wm, _ = test.data.tensor.circle((20, 20, 1), radius=5, width=2)
+        nib.save(fod, _TEST_RESULTS_DIR / "circle-dti-tensor.nii.gz")
+        nib.save(wm, _TEST_RESULTS_DIR / "circle-dti-wm.nii.gz")
+        seeds = [tg.seeds.Seed([19.0, 22.5, 0.0], [-1.0, 0.0, 0.0])]
+
+        # Generate the tractogram.
+        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
+        config.inverse_curvature = 10.0
+        algorithm = tg.algorithms.Transport(fod.get_fdata(), fod.affine, len(seeds), config)
+        streamlines = algorithm.run(seeds)
+
+        # Save the streamlines for QA.
+        tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
+        tck = nib.streamlines.TckFile(tractogram)
+        tck.save(_TEST_RESULTS_DIR / "circle-dti-streamlines.tck")
 
     def test_circle(self):
         """Test tractography on the circle dataset"""

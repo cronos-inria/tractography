@@ -1,8 +1,9 @@
-#ifndef __DIFFUSION_CONNECTOME___
-#define __DIFFUSION_CONNECTOME___
+#ifndef __DIFFUSION_CONNECTOME__
+#define __DIFFUSION_CONNECTOME__
 
 #include "utils/core.cl"
-#include "utils/spharm.cl"
+#define $model
+#include "models/select.cl"
 #include "diffusion/core.cl"
 
 __kernel void connectome(

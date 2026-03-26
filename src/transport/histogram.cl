@@ -1,4 +1,9 @@
-#include "utils/spharm.cl"
+#ifndef __TRANSPORT_HISTOGRAM__
+#define __TRANSPORT_HISTOGRAM__
+
+#include "utils/core.cl"
+#define $model
+#include "models/select.cl"
 #include "diffusion/core.cl"
 
 __kernel void histogram(
@@ -92,3 +97,5 @@ __kernel void histogram(
 	}
 	randoms[gid] = state;
 }
+
+#endif

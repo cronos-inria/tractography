@@ -4,7 +4,7 @@ import trimesh
 
 import tractography as tg
 from . import opencl as cl
-from .configuration import Algorithm, BaseConfiguration
+from .configuration import Algorithm, BaseConfiguration, LocalModel
 from . import register
 
 
@@ -37,6 +37,9 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     voxels = np.hstack((voxels, np.ones((len(voxels), 1))))
     inline_fod = fod[mask]
     randoms = np.random.randint(4294967295, size=(n_threads, 2))
+            
+    # Determine the local model based on the data shape.
+    model = LocalModel.from_shape(fod.shape)
 
     # Send the data to the device.
     fod_buffer = cl.new_read_only_buffer(fod.astype(np.float32))
@@ -51,6 +54,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
 
     # Set constants in the OpenCL code.
     values = {
+        "model": str(model),
         "nx": fod.shape[0],
         "ny": fod.shape[1],
         "nz": fod.shape[2],
@@ -94,12 +98,8 @@ class Diffusion:
         iaffine = np.linalg.inv(affine).astype(np.float32)
         self._iaffine = cl.new_read_only_buffer(iaffine)
 
-        # Check the shape of the fODF data. For now, only 45 coefficients are
-        # supported.
-        if odf.shape[-1] != 45:
-            raise ValueError(
-                "For now, only fODF with 45 coefficients are supported (lmax=8)."
-            )
+        # Determine the local model based on the data shape.
+        model = LocalModel.from_shape(odf.shape)
         self._odf = cl.new_read_only_buffer(odf.astype(np.float32))
 
         # Add the random number states.
@@ -126,6 +126,7 @@ class Diffusion:
 
         # Set constants in the OpenCL code.
         values = {
+            "model": str(model),
             "nx": odf.shape[0],
             "ny": odf.shape[1],
             "nz": odf.shape[2],
@@ -212,6 +213,9 @@ def connectome(
     voxels = np.hstack((voxels, np.ones((len(voxels), 1))))
     inline_fod = fod[mask]
     randoms = np.random.randint(4294967295, size=(n_threads, 2))
+        
+    # Determine the local model based on the data shape.
+    model = LocalModel.from_shape(fod.shape)
 
     fod_buffer = cl.new_read_only_buffer(fod.astype(np.float32))
     fod_inverse_affine_buffer = cl.new_read_only_buffer(
@@ -232,6 +236,7 @@ def connectome(
     conn_matrix_buffer = cl.new_buffer(conn_matrix)
 
     values = {
+        "model": str(model),
         "nx": fod.shape[0],
         "ny": fod.shape[1],
         "nz": fod.shape[2],
