@@ -1,7 +1,5 @@
 #include "utils/core.cl"
-#include "utils/spharm.cl"
-#include "probabilistic/core.cl"
-
+#include "algorithms/deterministic/core.cl"
 
 __kernel void histogram(
         __global const float fod_values[$nx][$ny][$nz][$n_directions],
@@ -47,16 +45,15 @@ __kernel void histogram(
 		float ylm_dt[HISTOGRAM_N_COEFFICIENTS];
 		float ylm_dp[HISTOGRAM_N_COEFFICIENTS]; 
 		float coefficients[HISTOGRAM_N_COEFFICIENTS] = {0};
-		float3 voxel = to_voxel(local_fod_inverse_affine, location);
 		uint3 previous_index = {0, 0, 0};
-		uint3 index = to_index(voxel);
+		uint3 index = {0, 0, 0};
 
 		float time = 0;
 		size_t n = 1;
 		while (n < $n_steps) {
 
 			// Go back to voxel space.
-			voxel = to_voxel(local_fod_inverse_affine, location);
+			float3 voxel = to_voxel(local_fod_inverse_affine, location);
 			previous_index = index;
 			index = to_index(voxel);
 
@@ -78,15 +75,14 @@ __kernel void histogram(
 				}
 			}
 
-			// Check if we are still in the image and have an fODF.
+			// Check if we are still in the image.
 			if (!in_image(voxel, $nx, $ny, $nz)) {
 				break;
 			}
 
 			// Pick the next direction. If the orientation is 0, there is nowhere to go.
-			float rand = randu(&state);
-			orientation = pick_orientation(fod_values, directions, orientation, dims, index, rand, max_angle);
-			if (length(orientation) < 0.5f) {
+			orientation = pick_orientation(fod_values, directions, orientation, dims, index, max_angle);
+			if (length(orientation) < 0.5) {
 				break;
 			}
 

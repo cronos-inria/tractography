@@ -1,5 +1,5 @@
 #include "utils/core.cl"
-#include "probabilistic/core.cl"
+#include "algorithms/probabilistic/core.cl"
 
 __kernel void tractogram(
         __global const float fod[$nx][$ny][$nz][$n_directions],

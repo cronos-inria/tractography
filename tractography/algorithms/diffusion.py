@@ -64,7 +64,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
         "n_steps": config.n_steps,
         "n_seeds": n_threads,
     }
-    program = cl.build_program(values, ["utils/seeds.cl", "diffusion/histogram.cl"])
+    program = cl.build_program(values, ["utils/seeds.cl", "algorithms/diffusion/histogram.cl"])
 
     args = (
         fod_buffer,
@@ -135,7 +135,7 @@ class Diffusion:
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
-        self._program = cl.build_program(values, "diffusion/tractogram.cl")
+        self._program = cl.build_program(values, "algorithms/diffusion/tractogram.cl")
 
     def run(self, seeds):
 
@@ -248,7 +248,7 @@ def connectome(
         "n_labels": n_labels,
         "n_vertices": len(vertices),
     }
-    program = cl.build_program(values, ["utils/seeds.cl", "diffusion/connectome.cl"])
+    program = cl.build_program(values, ["utils/seeds.cl", "algorithms/diffusion/connectome.cl"])
 
     args = (
         fod_buffer,

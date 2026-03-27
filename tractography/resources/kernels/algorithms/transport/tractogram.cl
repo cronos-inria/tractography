@@ -4,7 +4,7 @@
 #include "utils/core.cl"
 #define $model
 #include "models/select.cl"
-#include "diffusion/core.cl"
+#include "algorithms/diffusion/core.cl"
 
 __kernel void tractogram(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],

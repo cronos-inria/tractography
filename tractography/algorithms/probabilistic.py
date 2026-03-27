@@ -81,7 +81,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
         "n_directions": n_directions,
         "n_seeds": n_threads,
     }
-    program = cl.build_program(values, ["utils/seeds.cl", "probabilistic/histogram.cl"])
+    program = cl.build_program(values, ["utils/seeds.cl", "algorithms/probabilistic/histogram.cl"])
 
     args = (
         fod_values_buffer,
@@ -187,7 +187,7 @@ class Probabilistic:
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
-        self._program = cl.build_program(values, "probabilistic/tractogram.cl")
+        self._program = cl.build_program(values, "algorithms/probabilistic/tractogram.cl")
 
     def run(self, seeds):
         """Run the probabilistic algorithm on the given seed points
@@ -322,7 +322,7 @@ def connectome(fod, fod_affine, seed_fod, seed_fod_affine, vertices, vertex_labe
         "n_labels": n_labels,
         "n_vertices": len(vertices),
     }
-    program = cl.build_program(values, ["utils/seeds.cl", "probabilistic/connectome.cl"])
+    program = cl.build_program(values, ["utils/seeds.cl", "algorithms/probabilistic/connectome.cl"])
 
     args = (
         fod_values_buffer,
