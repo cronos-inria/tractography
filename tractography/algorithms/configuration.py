@@ -1,12 +1,12 @@
 from enum import Enum
-from pathlib import Path
+from importlib.resources import files
 import tomllib
 
 import numpy as np
 import pydantic
 
 
-_DEFAULT_CONFIG_DIR = Path(__file__).parents[2] / "config"
+_DEFAULT_CONFIG_DIR = files("tractography.resources") / "config"
 
 
 class Algorithm(Enum):
@@ -73,7 +73,8 @@ class BaseConfiguration(pydantic.BaseModel):
     @classmethod
     def load(cls, algorithm):
         """Load the configuration from a file"""
-        with open(_DEFAULT_CONFIG_DIR / (str(algorithm) + ".toml"), "rb") as f:
+        config_file = _DEFAULT_CONFIG_DIR / (str(algorithm) + ".toml")
+        with config_file.open("rb") as f:
             config = tomllib.load(f)
 
         return cls.model_validate(config)

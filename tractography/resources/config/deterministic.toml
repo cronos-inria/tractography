@@ -1,0 +1,19 @@
+# Default configuration file for deterministic tractography.
+algorithm = "deterministic"
+
+
+# The number of streamlines generated per batch.
+batch_size = 50000
+
+# The default step size. This is the value used internally for computation.
+step_size = 0.25 # in seconds (or mm with 1mm/sec) 
+
+# The default step size of the output streamlines.
+save_at = 0.25 # in seconds (or mm with 1mm/sec) 
+
+# The opening of the direction search cone.
+maximum_angle = 30 # in degrees
+
+[streamline]
+length.minimum = 10.0  # in mm
+length.maximum = 300.0 # in mm

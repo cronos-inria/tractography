@@ -2,7 +2,7 @@ import numpy as np
 import pydantic
 import trimesh
 
-import tractography as tg
+from .. import seeds as seeds_module, utils
 from . import opencl as cl
 from .configuration import Algorithm, BaseConfiguration, LocalModel
 from . import register
@@ -83,7 +83,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     cl.run_histogram(program, args, n_threads)
     cl.copy_from_buffer(hist_buffer, hist)
 
-    hist = tg.utils.normalize_odf(hist)
+    hist = utils.normalize_odf(hist)
     return hist
 
 
@@ -140,7 +140,7 @@ class Diffusion:
     def run(self, seeds):
 
         # Transfer the seeds to the buffer.
-        array = tg.seeds.to_array(seeds).astype(np.float32)
+        array = seeds_module.to_array(seeds).astype(np.float32)
         cl.copy_to_buffer(self._seeds, array)
 
         # Track streamlines.
@@ -274,4 +274,4 @@ def connectome(
     return conn_matrix
 
 
-register(Algorithm.DIFFUSION, Diffusion, histogram, connectome)
+register(Algorithm.DIFFUSION, Configuration, Diffusion, histogram, connectome)
