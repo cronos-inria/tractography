@@ -62,7 +62,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
         "n_steps": config.n_steps,
         "n_seeds": n_threads,
     }
-    program = cl.build_program(values, ["utils/seeds.cl", "transport/histogram.cl"])
+    program = cl.build_program(values, ["utils/seeds.cl", "algorithms/transport/histogram.cl"])
 
     args = (
         fod_buffer,
@@ -121,7 +121,7 @@ class Transport:
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
-        self._program = cl.build_program(values, "transport/tractogram.cl")
+        self._program = cl.build_program(values, "algorithms/transport/tractogram.cl")
 
     def run(self, seeds):
 
@@ -229,7 +229,7 @@ def connectome(
         "n_labels": n_labels,
         "n_vertices": len(vertices),
     }
-    program = cl.build_program(values, ["utils/seeds.cl", "transport/connectome.cl"])
+    program = cl.build_program(values, ["utils/seeds.cl", "algorithms/transport/connectome.cl"])
 
     args = (
         fod_buffer,

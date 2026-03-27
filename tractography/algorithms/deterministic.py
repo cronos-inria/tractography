@@ -80,7 +80,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
         "n_directions": n_directions,
         "n_seeds": n_threads,
     }
-    program = cl.build_program(values, ["utils/seeds.cl", "deterministic/histogram.cl"])
+    program = cl.build_program(values, ["utils/seeds.cl", "algorithms/deterministic/histogram.cl"])
 
     args = (
         fod_values_buffer,
@@ -179,7 +179,7 @@ class Deterministic:
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
-        self._program = cl.build_program(values, "deterministic/tractogram.cl")
+        self._program = cl.build_program(values, "algorithms/deterministic/tractogram.cl")
 
     def run(self, seeds):
         """Run the deterministic algorithm on the given seed points
@@ -311,7 +311,7 @@ def connectome(fod, fod_affine, seed_fod, seed_fod_affine, vertices, vertex_labe
         "n_labels": n_labels,
         "n_vertices": len(vertices),
     }
-    program = cl.build_program(values, ["utils/seeds.cl", "deterministic/connectome.cl"])
+    program = cl.build_program(values, ["utils/seeds.cl", "algorithms/deterministic/connectome.cl"])
 
     args = (
         fod_values_buffer,

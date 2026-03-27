@@ -1,8 +1,8 @@
-#ifndef __DETERMINISTIC_CONNECTOME___
-#define __DETERMINISTIC_CONNECTOME___
+#ifndef __PROBABILISTIC_CONNECTOME___
+#define __PROBABILISTIC_CONNECTOME___
 
 #include "utils/core.cl"
-#include "deterministic/core.cl"
+#include "algorithms/probabilistic/core.cl"
 
 __kernel void connectome(
         __global const float fod_values[$nx][$ny][$nz][$n_directions],
@@ -65,7 +65,8 @@ __kernel void connectome(
             uint3 index = to_index(voxel);
 
             // Pick the next direction.
-            orientation = pick_orientation(fod_values, directions, orientation, dims, index, max_angle);
+            float rand = randu(&state);
+            orientation = pick_orientation(fod_values, directions, orientation, dims, index, rand, max_angle);
             if (length(orientation) < 0.5) {
                 break;
             }

@@ -1,10 +1,11 @@
-#ifndef __TRANSPORT_HISTOGRAM__
-#define __TRANSPORT_HISTOGRAM__
+#ifndef __DIFFUSION_HISTOGRAM__
+#define __DIFFUSION_HISTOGRAM__
 
 #include "utils/core.cl"
+#include "utils/spharm.cl"
 #define $model
 #include "models/select.cl"
-#include "diffusion/core.cl"
+#include "algorithms/diffusion/core.cl"
 
 __kernel void histogram(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],
@@ -16,6 +17,7 @@ __kernel void histogram(
         float dt,
 		float save_at,
 		float gamma,
+		float noise_variance,
 		uint seeds_per_thread,
         __global float hist[$nx][$ny][$nz][HISTOGRAM_N_COEFFICIENTS])
 {
@@ -29,6 +31,7 @@ __kernel void histogram(
 	float4 local_seed_fod_affine[4] = {seed_fod_affine[0], seed_fod_affine[1], seed_fod_affine[2], seed_fod_affine[3]};
 
 	for (size_t j = 0; j < seeds_per_thread; j++) {
+
 		// Generate the seed.
 		float4 location;
 		float4 orientation;
@@ -77,7 +80,7 @@ __kernel void histogram(
 
 			// Update the orientation.
 		    model_value_t evaluated_model = evaluate_model(fod, dims, voxel, orientation);
-		    orientation = update_orientation(evaluated_model, orientation, 0, dt, gamma, 0.0f);
+		    orientation = update_orientation(evaluated_model, orientation, &state, dt, gamma, noise_variance);
 
 			// Move the point forward and add it to the streamline.
 			location += dt * orientation;

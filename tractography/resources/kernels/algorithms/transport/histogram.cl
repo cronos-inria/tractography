@@ -1,41 +1,34 @@
+#ifndef __TRANSPORT_HISTOGRAM__
+#define __TRANSPORT_HISTOGRAM__
+
 #include "utils/core.cl"
-#include "deterministic/core.cl"
+#define $model
+#include "models/select.cl"
+#include "algorithms/diffusion/core.cl"
 
 __kernel void histogram(
-        __global const float fod_values[$nx][$ny][$nz][$n_directions],
+        __global const float fod[$nx][$ny][$nz][$n_coefficients],
         __global const float4 fod_inverse_affine[4],
-        __global const float4 directions[$n_directions],
         __global const float seed_fod[$nnz][$n_coefficients],
         __global const float4 seed_fod_voxels[$nnz],
         __global const float4 seed_fod_affine[4],
         __global uint2 randoms[$n_seeds],
         float dt,
 		float save_at,
-		float max_angle,
+		float gamma,
 		uint seeds_per_thread,
         __global float hist[$nx][$ny][$nz][HISTOGRAM_N_COEFFICIENTS])
 {
     uint gid = get_global_id(0);
 	if (gid >= $n_seeds) return;
 
-	uint4 dims = {$nx, $ny, $nz, $n_directions};
+	uint4 dims = {$nx, $ny, $nz, $n_coefficients};
 
 	uint2 state = randoms[gid];
-	float4 local_fod_inverse_affine[4] = {
-		fod_inverse_affine[0],
-		fod_inverse_affine[1],
-		fod_inverse_affine[2],
-		fod_inverse_affine[3]
-	};
-	float4 local_seed_fod_affine[4] = {
-		seed_fod_affine[0],
-		seed_fod_affine[1],
-		seed_fod_affine[2],
-		seed_fod_affine[3]
-	};
+	float4 local_fod_inverse_affine[4] = {fod_inverse_affine[0], fod_inverse_affine[1], fod_inverse_affine[2], fod_inverse_affine[3]};
+	float4 local_seed_fod_affine[4] = {seed_fod_affine[0], seed_fod_affine[1], seed_fod_affine[2], seed_fod_affine[3]};
 
 	for (size_t j = 0; j < seeds_per_thread; j++) {
-
 		// Generate the seed.
 		float4 location;
 		float4 orientation;
@@ -44,12 +37,11 @@ __kernel void histogram(
 		float ylm[HISTOGRAM_N_COEFFICIENTS];
 		float ylm_dt[HISTOGRAM_N_COEFFICIENTS];
 		float ylm_dp[HISTOGRAM_N_COEFFICIENTS]; 
-		float coefficients[HISTOGRAM_N_COEFFICIENTS] = {0};
+		size_t n = 1;
+		float time = 0;
 		uint3 previous_index = {0, 0, 0};
 		uint3 index = {0, 0, 0};
-
-		float time = 0;
-		size_t n = 1;
+		float coefficients[HISTOGRAM_N_COEFFICIENTS] = {0};
 		while (n < $n_steps) {
 
 			// Go back to voxel space.
@@ -75,20 +67,21 @@ __kernel void histogram(
 				}
 			}
 
-			// Check if we are still in the image.
+			// Check if we are still in the image and have an fODF.
 			if (!in_image(voxel, $nx, $ny, $nz)) {
 				break;
 			}
-
-			// Pick the next direction. If the orientation is 0, there is nowhere to go.
-			orientation = pick_orientation(fod_values, directions, orientation, dims, index, max_angle);
-			if (length(orientation) < 0.5) {
+			if (fod[index.x][index.y][index.z][0] <= 0.0f) {
 				break;
 			}
 
-			// Move the point forwared and add it to the streamline.
+			// Update the orientation.
+		    model_value_t evaluated_model = evaluate_model(fod, dims, voxel, orientation);
+		    orientation = update_orientation(evaluated_model, orientation, 0, dt, gamma, 0.0f);
+
+			// Move the point forward and add it to the streamline.
 			location += dt * orientation;
-			
+
 			// Move time forward and record point if necessary.
 			time += dt;
 			if (time >= save_at) {
@@ -104,3 +97,5 @@ __kernel void histogram(
 	}
 	randoms[gid] = state;
 }
+
+#endif
