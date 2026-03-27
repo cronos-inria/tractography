@@ -3,7 +3,7 @@ import unittest
 from tractography.algorithms import register, resolve, RegistryEntry, _REGISTRY
 from tractography.algorithms.configuration import Algorithm
 from tractography.algorithms.deterministic import connectome as deterministic_connectome
-from tractography.algorithms.deterministic import Deterministic, histogram as deterministic_histogram
+from tractography.algorithms.deterministic import Deterministic, histogram as deterministic_histogram, Configuration as DeterministicConfiguration
 from tractography.algorithms.diffusion import connectome as diffusion_connectome
 from tractography.algorithms.diffusion import Diffusion, histogram as diffusion_histogram
 from tractography.algorithms.probabilistic import connectome as probabilistic_connectome
@@ -30,7 +30,7 @@ class TestRegister(unittest.TestCase):
     def test_duplicate_registration_raises(self):
         """Registering the same algorithm twice should raise ValueError"""
         with self.assertRaises(ValueError):
-            register(Algorithm.DETERMINISTIC, Deterministic, deterministic_histogram)
+            register(Algorithm.DETERMINISTIC, DeterministicConfiguration, Deterministic, deterministic_histogram)
 
     def test_registered_trackers(self):
         """Each algorithm should map to the correct tracker class"""

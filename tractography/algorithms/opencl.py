@@ -1,4 +1,4 @@
-from pathlib import Path
+from importlib.resources import as_file, files
 from string import Template
 
 import numpy as np
@@ -12,8 +12,7 @@ _queue = cl.CommandQueue(_context)
 _device = _context.devices[0]
 _nb_units = _device.max_compute_units
 
-_OPENCL_DIR = Path(__file__).parents[2] / "src"
-_OPENCL_INCLUDE = f"-I {_OPENCL_DIR}"
+_OPENCL_DIR = files("tractography.resources") / "kernels"
 
 
 def new_read_only_buffer(data):
@@ -35,15 +34,17 @@ def build_program(values, names):
     if isinstance(names, str):
         names = [names]
 
-    kernel = ""
-    for name in names:
-        with open(_OPENCL_DIR / name) as f:
-            kernel += f.read()
-    template = Template(kernel)
+    with as_file(_OPENCL_DIR) as opencl_dir:
+        kernel = ""
+        for name in names:
+            with open(opencl_dir / name) as f:
+                kernel += f.read()
 
-    # Set constants in the OpenCL code.
-    source = template.safe_substitute(values)
-    return cl.Program(_context, source).build(_OPENCL_INCLUDE)
+        template = Template(kernel)
+
+        # Set constants in the OpenCL code.
+        source = template.safe_substitute(values)
+        return cl.Program(_context, source).build(f"-I {opencl_dir}")
 
 
 def new_write_only_buffer(size):

@@ -4,10 +4,11 @@ from typing import Optional
 from dataclasses import dataclass
 from typing import Callable, Final
 
-from .configuration import Algorithm
+from .configuration import Algorithm, BaseConfiguration
 
 @dataclass(frozen=True)
 class RegistryEntry:
+    configuration: type[BaseConfiguration]
     tracker: type
     histogram: Callable
     connectome: Optional[Callable] = None
@@ -16,11 +17,22 @@ class RegistryEntry:
 _REGISTRY: Final[dict[Algorithm, RegistryEntry]] = {}
 
 
-def register(algorithm: Algorithm, tracker: type, histogram: Callable, connectome: Optional[Callable] = None) -> None:
+def register(
+    algorithm: Algorithm,
+    configuration: type[BaseConfiguration],
+    tracker: type,
+    histogram: Callable,
+    connectome: Optional[Callable] = None,
+) -> None:
     """Register a tracker implementation class for an algorithm."""
     if algorithm in _REGISTRY:
         raise ValueError(f"Tracker already registered for algorithm: {algorithm}")
-    _REGISTRY[algorithm] = RegistryEntry(tracker=tracker, histogram=histogram, connectome=connectome)
+    _REGISTRY[algorithm] = RegistryEntry(
+        configuration=configuration,
+        tracker=tracker,
+        histogram=histogram,
+        connectome=connectome,
+    )
 
 
 def resolve(algorithm: Algorithm) -> RegistryEntry:

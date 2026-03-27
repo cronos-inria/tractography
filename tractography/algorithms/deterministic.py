@@ -1,7 +1,7 @@
 import numpy as np
 import pydantic
 
-import tractography as tg
+from .. import core, seeds as seeds_module, utils
 from . import opencl as cl
 from .configuration import Algorithm, BaseConfiguration, LocalModel
 from . import register
@@ -39,13 +39,13 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     # Generate a set of orientation where the FODs are evaluated. On the
     # device the vertices are represented as float4.
     n_directions = 300
-    directions = tg.core.fibonacci_sphere(n_directions)
+    directions = core.fibonacci_sphere(n_directions)
     directions_homogeneous = np.c_[directions, np.zeros((n_directions,))]
 
     # Convert the spherical harmonics to 1D probability mass functions.
     n_coefficients = fod.shape[-1]
-    azimuths, colatitudes, _ = tg.core.cart2sph(*directions.T)
-    matrix, _ = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
+    azimuths, colatitudes, _ = core.cart2sph(*directions.T)
+    matrix, _ = core.ishtmtx(azimuths, colatitudes, n_coefficients)
     fod_values = np.maximum(np.dot(fod.reshape((-1, n_coefficients)), matrix.T), 0)
     fod_values = fod_values.reshape((*fod.shape[:3], -1))
 
@@ -99,7 +99,7 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     cl.run_histogram(program, args, n_threads)
     cl.copy_from_buffer(hist_buffer, hist)
 
-    hist = tg.utils.normalize_odf(hist)
+    hist = utils.normalize_odf(hist)
     return hist
 
 
@@ -138,7 +138,7 @@ class Deterministic:
         # Generate a set of orientation where the FODs are evaluated. On the
         # device the vertices are represented as float4.
         n_points = 400
-        vertices = tg.core.fibonacci_sphere(n_points)
+        vertices = core.fibonacci_sphere(n_points)
         device_vertices = np.c_[vertices, np.zeros((n_points,))]
         self._vertices = cl.new_read_only_buffer(device_vertices.astype(np.float32))
 
@@ -148,8 +148,8 @@ class Deterministic:
 
         # Convert the spherical harmonics to 1D probability mass functions.
         n_coefficients = odf.shape[-1]
-        azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
-        matrix, _ = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
+        azimuths, colatitudes, _ = core.cart2sph(*vertices.T)
+        matrix, _ = core.ishtmtx(azimuths, colatitudes, n_coefficients)
         odf_values = np.maximum(np.dot(odf.reshape((-1, n_coefficients)), matrix.T), 0)
         odf_values = odf_values.reshape((*odf.shape[:3], -1))
         self._values = cl.new_read_only_buffer(odf_values.astype(np.float32))
@@ -196,7 +196,7 @@ class Deterministic:
         """
 
         # Transfer the seeds to the buffer.
-        array = tg.seeds.to_array(seeds).astype(np.float32)
+        array = seeds_module.to_array(seeds).astype(np.float32)
         cl.copy_to_buffer(self._seeds, array)
 
         # Track streamlines.
@@ -262,13 +262,13 @@ def connectome(fod, fod_affine, seed_fod, seed_fod_affine, vertices, vertex_labe
 
     # Generate a set of orientations where the FODs are evaluated.
     n_directions = 300
-    directions = tg.core.fibonacci_sphere(n_directions)
+    directions = core.fibonacci_sphere(n_directions)
     directions_homogeneous = np.c_[directions, np.zeros((n_directions,))]
 
     # Convert the spherical harmonics to 1D probability mass functions.
     n_coefficients = fod.shape[-1]
-    azimuths, colatitudes, _ = tg.core.cart2sph(*directions.T)
-    matrix_sh, _ = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
+    azimuths, colatitudes, _ = core.cart2sph(*directions.T)
+    matrix_sh, _ = core.ishtmtx(azimuths, colatitudes, n_coefficients)
     fod_values = np.maximum(np.dot(fod.reshape((-1, n_coefficients)), matrix_sh.T), 0)
     fod_values = fod_values.reshape((*fod.shape[:3], -1))
 
@@ -337,4 +337,4 @@ def connectome(fod, fod_affine, seed_fod, seed_fod_affine, vertices, vertex_labe
     return conn_matrix
 
 
-register(Algorithm.DETERMINISTIC, Deterministic, histogram, connectome)
+register(Algorithm.DETERMINISTIC, Configuration, Deterministic, histogram, connectome)

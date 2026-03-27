@@ -8,7 +8,8 @@ import nimesh
 import numpy as np
 import numpy.typing as npt
 
-import tractography as tg
+from . import core
+from .algorithms import opencl
 from tractography.algorithms.configuration import LocalModel
 
 
@@ -138,11 +139,11 @@ def from_fod(
 
         randoms = np.random.randint(4294967295, size=(n_seeds, 2)).astype(np.uint32)
 
-        fod_buffer = tg.algorithms.opencl.new_read_only_buffer(inline_fod)
-        indices_buffer = tg.algorithms.opencl.new_read_only_buffer(indices)
-        affine_buffer = tg.algorithms.opencl.new_read_only_buffer(affine)
-        randoms_buffer = tg.algorithms.opencl.new_read_only_buffer(randoms)
-        seeds_buffer = tg.algorithms.opencl.new_write_only_buffer(4 * 8 * n_seeds)
+        fod_buffer = opencl.new_read_only_buffer(inline_fod)
+        indices_buffer = opencl.new_read_only_buffer(indices)
+        affine_buffer = opencl.new_read_only_buffer(affine)
+        randoms_buffer = opencl.new_read_only_buffer(randoms)
+        seeds_buffer = opencl.new_write_only_buffer(4 * 8 * n_seeds)
 
         # Compile the OpenCL program that generates seeds.
         model = LocalModel.from_shape(fod.shape)
@@ -152,10 +153,10 @@ def from_fod(
             "n_coefficients": fod.shape[-1],
             "n_seeds": n_seeds,
         }
-        program = tg.algorithms.opencl.build_program(values, "utils/seeds.cl")
+        program = opencl.build_program(values, "utils/seeds.cl")
 
         program.seeds_from_fod(
-            tg.algorithms.opencl._queue,
+            opencl._queue,
             (n_seeds,),
             None,
             fod_buffer,
@@ -165,7 +166,7 @@ def from_fod(
             seeds_buffer,
         )
         seeds = np.zeros((n_seeds, 8), np.float32)
-        tg.algorithms.opencl.copy_from_buffer(seeds_buffer, seeds)
+        opencl.copy_from_buffer(seeds_buffer, seeds)
 
         return seeds if as_array else from_array(seeds)
 
@@ -177,9 +178,9 @@ def from_fod(
         locations = nib.affines.apply_affine(affine, locations_voxel)
 
         # Preprare discretization of the ODFs.
-        vertices = tg.core.fibonacci_sphere(1000)
-        azimuths, colatitudes, _ = tg.core.cart2sph(*vertices.T)
-        ishtmtx, _ = tg.core.ishtmtx(azimuths, colatitudes, fod.shape[-1])
+        vertices = core.fibonacci_sphere(1000)
+        azimuths, colatitudes, _ = core.cart2sph(*vertices.T)
+        ishtmtx, _ = core.ishtmtx(azimuths, colatitudes, fod.shape[-1])
 
         # Importance sample the ODFs based on the discretization.
         orientations = []
