@@ -29,7 +29,7 @@ __kernel void tractogram(
 
 	streamlines[gid][0] = point;
 	size_t n = 1;
-	float time = 0;
+	float time = 0.0f;
 	while (n < $n_steps) {
 
 		// Go back to voxel space.
@@ -49,13 +49,13 @@ __kernel void tractogram(
 		orientation = update_orientation(evaluated_model, orientation, 0, dt, gamma, 0.0f);
 
 		// Move the point forward and add it to the streamline.
-		point += dt * orientation;
+		point = mad(dt, orientation, point);
 		
-		// Move time forward and record point if necessary.
+		// Move time forward and record the point if necessary.
 		time += dt;
 		if (time >= save_at) {
 			time -= save_at;
-			streamlines[gid][n] = point - time * orientation;
+			streamlines[gid][n] = mad(-time, orientation, point);
 			n++;
 		}
 
