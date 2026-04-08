@@ -17,6 +17,129 @@ _TEST_RESULTS_DIR = (
 )
 
 
+class TestExactSolutions(unittest.TestCase):
+    """Test the transport tractography kernel against numerically integrable FODs.
+
+    The transport equation propagates a fibre orientation U along the gradient
+    flow of log F on the unit sphere:
+
+        dU/dt = gamma * (I - U*U^T) * grad_F(U) / F(U)
+
+    where F : S^2 -> R+ is the FOD and gamma = inverse_curvature.  For simple
+    analytic FODs the right-hand side can be evaluated exactly, allowing a
+    high-precision reference trajectory to be computed in Python and compared
+    against the OpenCL kernel output.
+    """
+
+    def test_u0u3(self):
+        """Test against F(u) = 1 + eps * u_x * u_z (cross-term in the xz-plane).
+
+        The FOD F(u) = 1 + eps * u_x * u_z is antipodally symmetric and
+        representable in real spherical harmonics up to l=2.  Its Cartesian
+        gradient is grad_F = eps * (u_z, 0, u_x), which gives the drift
+
+            dU/dt = eps/F(U) * (I - U*U^T) * (U_z, 0, U_x)^T
+
+        This ODE is integrated by `euler_intrinsic` below and the resulting
+        positions are compared against the kernel output.
+        """
+
+        epsilon = 0.3
+        n_coefficients = 45
+        shape = (1, 1, 1)
+
+        # Build a spatially constant FOD image with F(u) = 1 + eps * u_x * u_z.
+        # The SH coefficients are found by least-squares fitting over a dense
+        # Fibonacci grid on the sphere.
+        bvectors = tg.core.fibonacci_sphere(5000)
+        fod_values = [1 + epsilon * u[2] * u[0] for u in bvectors]
+
+        azimuths, colatitudes, _ = tg.core.cart2sph(*bvectors.T)
+        ylm, _ = tg.core.ishtmtx(azimuths, colatitudes, n_coefficients)
+        fod_constant = np.dot(np.linalg.pinv(ylm), fod_values)
+
+        fod = np.zeros(shape + (n_coefficients,))
+        fod[..., :] = fod_constant
+
+        # A single voxel 1000 mm wide keeps the streamline inside the image
+        # throughout the 1 mm integration window.
+        affine = np.diag((1000, 1000, 1000, 1))
+        affine[:3, 3] = -0.5
+        fod = nib.nifti1.Nifti1Image(fod, affine=affine)
+
+        def euler_intrinsic(dt, t0, p0, epsilon, N):
+            """Integrate dU/dt = eps/F(U) * (I - U*U^T) * (U_z, 0, U_x)^T via forward Euler.
+
+            Args:
+                dt: Integration step size (same units as config.save_at).
+                t0: Initial colatitude theta_0 (radians).
+                p0: Initial azimuth phi_0 (radians).
+                epsilon: Anisotropy amplitude of the FOD.
+                N: Total number of orientation vectors to return.
+
+            Returns:
+                Array of shape (N, 3) where entry k is the unit orientation
+                vector after k update steps, i.e. [U_0, U_1, ..., U_{N-1}].
+                U_0 is the initial orientation; U_k for k >= 1 is obtained by
+                applying k Euler steps from U_0.
+            """
+            u1, u2, u3 = tg.core.sph2cart(p0, t0, 1.0)
+            U = np.array([u1, u2, u3])
+            sol = [U]
+            I = np.eye(3)
+            for _ in range(N - 1):
+                F = 1 + epsilon * U[0] * U[2]
+                # Cartesian gradient of F projected onto the tangent plane of
+                # the sphere at U: (I - U*U^T) * grad_F / F.
+                target_vec = np.array([U[2], 0.0, U[0]])  # grad_F / eps
+                outer_U = np.outer(U, U)
+                dU = np.dot((I - outer_U), target_vec)
+                dU = dU * epsilon / F
+                U = U + dt * dU
+                U /= np.linalg.norm(U)  # re-normalise after Euler step
+                sol.append(U)
+
+            return np.array(sol)
+
+        # Seed at an off-axis orientation so the drift is non-trivial.
+        theta_0 = 0.12
+        phi_0 = 0.5
+        orientation = np.array(tg.core.sph2cart(phi_0, theta_0, 1.0))
+        seeds = [tg.seeds.Seed(np.array([10., 10, 10]), orientation)]
+
+        # Use step_size == save_at so every kernel step is saved, making
+        # the reference integration straightforward.  inverse_curvature=1.0
+        # matches the gamma=1 assumption in the analytic drift above.
+        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
+        config.batch_size = 1
+        config.step_size = 0.001
+        config.save_at = 0.001
+        config.inverse_curvature = 1.0
+        config.streamline.length.minimum = 0.0
+        config.streamline.length.maximum = 1.0
+        streamline = np.array(tg.tractogram(fod, seeds, config).streamlines[0])
+
+        # Build the reference trajectory by integrating with euler_intrinsic.
+        # The kernel updates orientation *before* advancing position, so the
+        # step from P_k to P_{k+1} uses the already-updated U_{k+1}:
+        #
+        #   P_{k+1} = P_k + dt * U_{k+1}
+        #
+        # euler_intrinsic returns [U_0, U_1, ..., U_{n_steps-1}], so index k
+        # (one-based Euler step) corresponds to u_ref[k].
+        u_ref = euler_intrinsic(config.save_at, theta_0, phi_0, epsilon, config.n_steps)
+        seed_pos = np.array([10., 10., 10.])
+        expected = np.zeros((config.n_steps, 3))
+        expected[0] = seed_pos
+        for k in range(1, config.n_steps):
+            expected[k] = expected[k - 1] + config.save_at * u_ref[k]
+
+        # decimal=3 (tolerance +-5e-4 mm) comfortably covers the ~1.2e-3 mm
+        # accumulated float32 rounding error over ~1000 steps at position ~10 mm
+        # (float32 ULP at 10 mm is ~9.5e-7 mm; errors grow as O(sqrt(N) * ULP)).
+        np.testing.assert_array_almost_equal(streamline, expected, decimal=3)
+
+
 class TestTransportHistogram(unittest.TestCase):
 
     def setUp(self):

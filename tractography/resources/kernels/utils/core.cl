@@ -76,7 +76,7 @@ inline void atomic_add_global_float(__global float *left, float right)
 
 float4 exps2(float4 p, float4 x, float t) {
     float n = length(x);
-    if (n == 0)
+    if (n <= 0.0f)
         return p;
 
 	float c;
@@ -174,7 +174,7 @@ __kernel void randus(__global float* values, uint n_values) {
 	}
 }
 
-// Returns an integer in the range (0, max) with uniform distribution.
+// Returns an integer in the range [0, max - 1] with uniform distribution.
 //
 inline uint randi(uint2 *state, uint max) {
 	return (uint) (randu(state) * max);
