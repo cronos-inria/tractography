@@ -49,7 +49,7 @@ coverage = "coverage run -m unittest -v && coverage report && coverage html"
 doc = "mkdocs gh-deploy --config-file mkdocs.yml --force"
 
 [tool.pixi.feature.cpu.dependencies]
-binutils = { version = "*", channel = "anaconda" }
+binutils = { version = "*", channel = "conda-forge" }
 numpy = {version = "*", channel = "conda-forge" }
 scipy = {version = "*", channel = "conda-forge" }
 pocl = { version = "*", channel = "conda-forge" }
