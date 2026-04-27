@@ -1,6 +1,12 @@
+from dataclasses import dataclass
+from typing import Tuple
+
+from nibabel.nifti1 import Nifti1Image
+from nibabel.streamlines.tractogram import Tractogram
 import numpy as np
 import pydantic
 
+from ..seeds import Seed
 from .. import seeds as seeds_module, utils
 from . import opencl as cl
 
@@ -14,6 +20,33 @@ class Configuration(BaseConfiguration):
     @classmethod
     def load(cls):
         return super().load(Algorithm.TRANSPORT)
+    
+
+@dataclass
+class Cache:
+    """Cache for the OpenCL setup of the transport algorithm.
+    
+    This cache is used to store the OpenCL buffers and program, so that they can
+    be reused across multiple tractography runs without needing to reallocate
+    memory or rebuild the program.
+
+    """
+
+    # The model parameters modelling the local FOD (e.g. spherical harmonics coefficients).
+    fod: cl.Buffer | None = None
+
+    # The affine transform from world to voxel space.
+    fod_inverse_affine: cl.Buffer | None = None
+
+    # The array of seeds.
+    seeds: cl.Buffer | None = None
+
+    # The ouput buffers for the streamlines and their lengths.
+    streamlines: cl.Buffer | None = None
+    lengths: cl.Buffer | None = None
+
+    # The OpenCL program.
+    program: cl.Program | None = None
 
 
 def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
@@ -84,71 +117,83 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     return hist
 
 
-class Transport:
+def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache: Cache | None = None) -> Tuple[Tractogram, Cache]:
 
-    def __init__(self, odf, affine, n_streamlines, config):
+    if cache is None:
 
-        self._n_streamlines = n_streamlines
-        self._config = config
+        # Generate a new cache for the OpenCL setup.
+        cache = Cache()
 
         # Precompute the inverse affine.
+        affine = fod.affine if fod.affine is not None else np.eye(4)
         iaffine = np.linalg.inv(affine).astype(np.float32)
-        self._iaffine = cl.new_read_only_buffer(iaffine)
+        cache.fod_inverse_affine = cl.new_read_only_buffer(iaffine)
 
-        # Determine the local model based on the data shape.
-        model = LocalModel.from_shape(odf.shape)
-        self._odf = cl.new_read_only_buffer(odf.astype(np.float32))
+        # The FOD model is determined by the data shape. For example, if the last 
+        # dimension has 45 coefficients, we assume a spherical harmonics model with 
+        # 45 coefficients.
+        model = LocalModel.from_shape(fod.shape)
+        cache.fod = cl.new_read_only_buffer(fod.get_fdata().astype(np.float32))
 
         # Create the seed buffer on the device. They are stored as two float4.
+        n_streamlines = len(seeds)
         seeds_array = np.empty((n_streamlines, 8), dtype=np.float32)
-        self._seeds = cl.new_read_only_buffer(seeds_array)
+        cache.seeds = cl.new_read_only_buffer(seeds_array)
 
-        # Reserve space for the streamlines on the device. The are
-        # stored as float4.
-        streamlines_nbytes = n_streamlines * config.n_steps * 4 * 4
-        self._streamlines = cl.new_write_only_buffer(streamlines_nbytes)
+        # Reserve space for the streamlines on the device. The are stored as float4.
+        streamlines = np.zeros((n_streamlines, config.n_steps, 4), dtype=np.float32)
+        cache.streamlines = cl.new_write_only_buffer(streamlines.nbytes)
 
         # Reserve space for the length of the streamlines on the device.
-        self._lengths = cl.new_write_only_buffer(n_streamlines * 4)
+        lengths = np.zeros((n_streamlines,), dtype=np.uint32)
+        cache.lengths = cl.new_write_only_buffer(lengths.nbytes)
 
-        # Set constants in the OpenCL code.
+        # Set constants in the OpenCL code and build the program.
         values = {
             "model": str(model),
-            "nx": odf.shape[0],
-            "ny": odf.shape[1],
-            "nz": odf.shape[2],
-            "n_coefficients": odf.shape[-1],
+            "nx": fod.shape[0],
+            "ny": fod.shape[1],
+            "nz": fod.shape[2],
+            "n_coefficients": fod.shape[-1],
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
-        self._program = cl.build_program(values, "algorithms/transport/tractogram.cl")
+        cache.program = cl.build_program(values, "algorithms/transport/tractogram.cl")
+
+    # Move seeds to the device.
+    seeds_array = seeds_module.to_array(seeds).astype(np.float32)
+    cl.copy_to_buffer(cache.seeds, seeds_array)
+
+    # Track streamlines.
+    args = (
+        cache.fod,
+        cache.fod_inverse_affine,
+        cache.seeds,
+        np.float32(config.step_size),
+        np.float32(config.save_at),
+        np.float32(config.inverse_curvature),
+        cache.streamlines,
+        cache.lengths,
+    )
+    cl.run_tractogram(cache.program, args, n_streamlines)
+
+    # Fetch the data.
+    cl.copy_from_buffer(cache.streamlines, streamlines)
+    cl.copy_from_buffer(cache.lengths, lengths)
+
+    return Tractogram([streamlines[i, :n, :3] for i, n in enumerate(lengths)], affine_to_rasmm=np.eye(4)), cache
+
+
+class Transport:
+
+    def __init__(self, odf, affine, n_streamlines, config):
+        self._cache = None
+        self._odf = Nifti1Image(odf, affine)
+        self._config = config
 
     def run(self, seeds):
-
-        # Transfer the seeds to the buffer.
-        array = seeds_module.to_array(seeds).astype(np.float32)
-        cl.copy_to_buffer(self._seeds, array)
-
-        # Track streamlines.
-        args = (
-            self._odf,
-            self._iaffine,
-            self._seeds,
-            np.float32(self._config.step_size),
-            np.float32(self._config.save_at),
-            np.float32(self._config.inverse_curvature),
-            self._streamlines,
-            self._lengths,
-        )
-        cl.run_tractogram(self._program, args, self._n_streamlines)
-        streamlines = np.zeros(
-            (self._n_streamlines, self._config.n_steps, 4), dtype=np.float32
-        )
-        cl.copy_from_buffer(self._streamlines, streamlines)
-        lengths = np.zeros((self._n_streamlines,), dtype=np.uint32)
-        cl.copy_from_buffer(self._lengths, lengths)
-
-        return [streamlines[i, :n, :3] for i, n in enumerate(lengths)]
+        tracto, self._cache = tractogram(self._odf, seeds, self._config, self._cache)
+        return tracto.streamlines
 
 
 def connectome(
