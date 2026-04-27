@@ -1,6 +1,6 @@
 from typing import Optional
 
-from . import algorithms, configuration, connectivity, core, nifti, seeds, utils
+from . import algorithms, configuration, connectivity, core, data, nifti, seeds, utils
 from .algorithms.configuration import Algorithm, BaseConfiguration
 
 import nibabel as nib
