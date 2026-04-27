@@ -174,11 +174,8 @@ class TestTransportHistogram(unittest.TestCase):
         )
 
 
-class TestTransport(unittest.TestCase):
+class TestTractogram(unittest.TestCase):
     """Test the OpenCL implementation of Transport tractography"""
-
-    def setUp(self):
-        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     def test_uniform_isotropic(self):
         """Test transport tractography on a uniform isotropic fOD field"""
@@ -187,62 +184,50 @@ class TestTransport(unittest.TestCase):
         fod = test.data.uniform_isotropic()
         affine = np.eye(4)
         seeds = tg.seeds.from_fod(fod, affine, 1000)
-        nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "uniform-fod.nii.gz")
+        fod = nib.nifti1.Nifti1Image(fod, affine)
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        algorithm = tg.algorithms.Transport(fod, affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
+        tractogram, _ = tg.algorithms.transport.tractogram(fod, seeds, config)
 
         # In an isotropic field, transport tractography should produce only
         # straight lines.
-        for streamline in streamlines:
+        for streamline in tractogram.streamlines:
             d = np.diff(streamline, n=2, axis=0)
             np.testing.assert_array_less(d, 1e-3)
-
-        # Save the streamlines for QA.
-        tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
-        tck = nib.streamlines.TckFile(tractogram)
-        tck.save(_TEST_RESULTS_DIR / "uniform-streamlines.tck")
 
     def test_cross(self):
         """Test tractography on the cross dataset"""
 
         # Prepare the data.
         fod, wm, _ = test.data.cross()
-        nib.save(fod, _TEST_RESULTS_DIR / "cross-fod.nii.gz")
-        nib.save(wm, _TEST_RESULTS_DIR / "cross-wm.nii.gz")
-        seeds = tg.seeds.from_mask(wm.get_fdata(), wm.affine, 1000)
+        affine = wm.affine if wm.affine is not None else np.eye(4)
+        seeds = tg.seeds.from_mask(wm.get_fdata(), affine, 10000)
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        algorithm = tg.algorithms.Transport(fod.get_fdata(), fod.affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
+        tractogram, _ = tg.algorithms.transport.tractogram(tg.nifti.multiply(fod, wm), seeds, config)
 
-        # Save the streamlines for QA.
-        tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
-        tck = nib.streamlines.TckFile(tractogram)
-        tck.save(_TEST_RESULTS_DIR / "cross-streamlines.tck")
+        # Streamlines should cover the whole cross, but not go outside of it.
+        points = np.vstack([s[:-1] for s in tractogram.streamlines])
+        voxels = np.round(nib.affines.apply_affine(np.linalg.inv(affine), points)).astype(int)
+        mask = np.zeros(wm.shape, dtype=np.uint8)
+        mask[*voxels.T] = 1
+        np.testing.assert_array_equal(mask, wm.get_fdata().astype(np.uint8))
+        
 
     def test_circle_dti(self):
         """Test tractography on the circle dataset, with DTI data"""
 
         # Prepare the data.
         fod, wm, _ = test.data.tensor.circle((20, 20, 1), radius=5, width=2)
-        nib.save(fod, _TEST_RESULTS_DIR / "circle-dti-tensor.nii.gz")
-        nib.save(wm, _TEST_RESULTS_DIR / "circle-dti-wm.nii.gz")
         seeds = [tg.seeds.Seed([19.0, 22.5, 0.0], [-1.0, 0.0, 0.0])]
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.TRANSPORT)
         config.inverse_curvature = 10.0
-        algorithm = tg.algorithms.Transport(fod.get_fdata(), fod.affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
-
-        # Save the streamlines for QA.
-        tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
-        tck = nib.streamlines.TckFile(tractogram)
-        tck.save(_TEST_RESULTS_DIR / "circle-dti-streamlines.tck")
+        tractogram, _ = tg.algorithms.transport.tractogram(fod, seeds, config)
+        streamlines = tractogram.streamlines
 
     def test_circle(self):
         """Test tractography on the circle dataset"""
@@ -252,12 +237,9 @@ class TestTransport(unittest.TestCase):
         radius = 2
         fod = test.data.circle(shape=shape, radius=radius)
         affine = np.eye(4)
-        nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "circle-fod.nii.gz")
-        wm = fod[..., 0] > 0
-        nib.save(
-            nib.Nifti1Image(wm.astype(np.uint8), affine),
-            _TEST_RESULTS_DIR / "circle-wm.nii.gz",
-        )
+        fod = nib.nifti1.Nifti1Image(fod, affine)
+        wm = fod.get_fdata()[..., 0] > 0
+        wm = nib.nifti1.Nifti1Image(wm.astype(np.uint8), affine)
         seeds = [
             tg.seeds.Seed(
                 [(shape[0] - 1) / 2, (shape[1] - 1) / 2 + radius, 0.0], [1.0, 0.0, 0.0]
@@ -270,13 +252,8 @@ class TestTransport(unittest.TestCase):
         config.streamline.length.maximum = 100
         config.step_size = 1e-4
         config.inverse_curvature = 50.0
-        algorithm = tg.algorithms.Transport(fod, affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
-
-        # Save the streamlines for QA.
-        tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=affine)
-        tck = nib.streamlines.TckFile(tractogram)
-        tck.save(_TEST_RESULTS_DIR / "circle-streamlines.tck")
+        tractogram, _ = tg.algorithms.transport.tractogram(fod, seeds, config)
+        streamlines = tractogram.streamlines
 
         # The streamlines should run until the maximum lenght is reached.
         length = len(streamlines[0]) * config.save_at

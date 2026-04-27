@@ -1,5 +1,6 @@
 from importlib.resources import as_file, files
 from string import Template
+from typing import Type
 
 import numpy as np
 import pyopencl as cl
@@ -13,6 +14,10 @@ _device = _context.devices[0]
 _nb_units = _device.max_compute_units
 
 _OPENCL_DIR = files("tractography.resources") / "kernels"
+
+# For typing.
+Buffer = Type[cl.Buffer]
+Program = cl.Program
 
 
 def new_read_only_buffer(data):
@@ -29,7 +34,7 @@ def new_buffer(data):
     return buffer
 
 
-def build_program(values, names):
+def build_program(values, names) -> Program:
 
     if isinstance(names, str):
         names = [names]
