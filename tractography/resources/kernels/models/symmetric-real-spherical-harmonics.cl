@@ -4,6 +4,8 @@
 #include "utils/core.cl"
 #include "utils/spharm.cl"
 
+#define SOFTMAX_SCALE 100.0f
+
 /**
  * NEAREST NEIGHBOR SYMMETRIC REAL SPHERICAL HARMONICS
  * This local model represents a symmetric fiber orientation distribution as linear combination of
@@ -52,7 +54,7 @@ model_value_t evaluate_interpolated_model(float *interpolated_model, uint model_
 
 	// Pre-compute the spherical harmonics at the point of interest.
 	float2 angles = cart2sph(orientation);
-	ishtmtx(angles.x, angles.y, ylm, ylm_dp, ylm_dt);
+	evaluate_sh_dphi_over_sin_theta(angles.x, angles.y, ylm, ylm_dp, ylm_dt);
 
 	model_value_t evaluated_model = (model_value_t) {0.0f, 0.0f, 0.0f};
     

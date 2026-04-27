@@ -74,7 +74,9 @@ model_value_t evaluate_interpolated_model(float *interpolated_model, uint model_
 	st = sincos(theta, &ct);
 	sp = sincos(phi, &cp);
 
-    float4 u_phi = {-st * sp, st * cp, 0.0f, 0.0f};
+    // IMPORTANT: The u_phi is pre-divided by sin(theta). See the comment in the
+    // definition of model_value_t for details.
+    float4 u_phi = {-sp, cp, 0.0f, 0.0f};
     float4 u_theta = {ct * cp, ct * sp, -st, 0.0f};
 
     model_value_t evaluated_model = (model_value_t) {0.0f, 0.0f, 0.0f};

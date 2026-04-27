@@ -6,6 +6,13 @@
 // For now, the histograms are always expressed in spherical harmonics with 45 coefficients.
 #define HISTOGRAM_N_COEFFICIENTS 45
 
+/**
+ * MODEL_VALUE_T
+ * A struct to hold the value of a local model (DTI, Spherical Harmonics, etc.) and its
+ * derivatives with respect to theta and phi.
+ *
+ * IMPORTANT: The derivative with respect to phi must be pre-divided by sin(theta).
+**/
 typedef struct {
     float value;
     float dtheta;
