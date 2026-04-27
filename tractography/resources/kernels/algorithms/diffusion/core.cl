@@ -36,7 +36,7 @@ float4 update_orientation(
     const float4 et = (float4)(ct * cp, ct * sp, -st, 0.0f);
     const float4 ep = (float4)(-sp, cp, 0.0f, 0.0f);
 
-    const float4 drift = (evaluated_model.dtheta * et + (evaluated_model.dphi / max(st, 1e-6f)) * ep) / max(evaluated_model.value, 1e-6f);
+    const float4 drift = (evaluated_model.dtheta * et + (evaluated_model.dphi) * ep) / max(evaluated_model.value, 1e-6f);
     float4 noise = {0.0f, 0.0f, 0.0f, 0.0f};
     if (noise_variance > 0.0f) {
         noise = randn(state) * et + randn(state) * ep;

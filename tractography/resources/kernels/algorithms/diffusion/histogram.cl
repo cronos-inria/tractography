@@ -55,7 +55,7 @@ __kernel void histogram(
 			// Compute the coefficients of the Dirac associated with the current
 			// orientation an add it to the histogram.
 			float2 angles = cart2sph(orientation);
-			ishtmtx(angles.x, angles.y, ylm, ylm_dp, ylm_dt);
+			evaluate_sh(angles.x, angles.y, ylm, ylm_dp, ylm_dt);
 
 			// Add the current orientation to the histogram.
 			if (previous_index.x == index.x && previous_index.y == index.y && previous_index.z == index.z) {
