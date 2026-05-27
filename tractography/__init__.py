@@ -1,7 +1,7 @@
 from typing import Optional
 
 from . import algorithms, configuration, connectivity, core, nifti, seeds, utils
-from .algorithms.configuration import Algorithm, BaseConfiguration
+from .algorithms.core import Algorithm, BaseConfiguration
 
 import nibabel as nib
 import numpy as np

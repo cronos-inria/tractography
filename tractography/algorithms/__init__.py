@@ -4,7 +4,7 @@ from typing import Optional
 from dataclasses import dataclass
 from typing import Callable, Final
 
-from .configuration import Algorithm, BaseConfiguration
+from .core import Algorithm, BaseConfiguration
 
 @dataclass(frozen=True)
 class RegistryEntry:

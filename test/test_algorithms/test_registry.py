@@ -1,7 +1,7 @@
 import unittest
 
 from tractography.algorithms import register, resolve, RegistryEntry, _REGISTRY
-from tractography.algorithms.configuration import Algorithm
+from tractography.algorithms.core import Algorithm
 from tractography.algorithms.deterministic import connectome as deterministic_connectome
 from tractography.algorithms.deterministic import tractogram as deterministic_tractogram
 from tractography.algorithms.deterministic import histogram as deterministic_histogram, Configuration as DeterministicConfiguration

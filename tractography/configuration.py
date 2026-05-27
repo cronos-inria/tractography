@@ -1,5 +1,5 @@
 from . import algorithms
-from .algorithms.configuration import Algorithm, BaseConfiguration
+from .algorithms.core import Algorithm, BaseConfiguration
 
 
 def load(algorithm: Algorithm) -> BaseConfiguration:
