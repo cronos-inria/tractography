@@ -101,8 +101,10 @@ class TestTractogram(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        algorithm = tg.algorithms.Diffusion(fod, affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
+        tracto, _ = tg.algorithms.diffusion.tractogram(
+            nib.Nifti1Image(fod, affine), seeds, config
+        )
+        streamlines = tracto.streamlines
 
         # Verify the number of streamline produced.
         self.assertEqual(len(streamlines), len(seeds))
@@ -118,8 +120,8 @@ class TestTractogram(unittest.TestCase):
         config = tg.configuration.load(tg.Algorithm.DIFFUSION)
         config.inverse_curvature = 5.0
         config.noise_variance = 0.05
-        algorithm = tg.algorithms.Diffusion(fod.get_fdata(), fod.affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
+        tracto, _ = tg.algorithms.diffusion.tractogram(fod, seeds, config)
+        streamlines = tracto.streamlines
 
         # Verify the number of streamline produced.
         self.assertEqual(len(streamlines), len(seeds))
@@ -133,8 +135,8 @@ class TestTractogram(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        algorithm = tg.algorithms.Diffusion(fod.get_fdata(), fod.affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
+        tracto, _ = tg.algorithms.diffusion.tractogram(fod, seeds, config)
+        streamlines = tracto.streamlines
 
         # Verify the number of streamline produced.
         self.assertEqual(len(streamlines), len(seeds))
@@ -151,10 +153,8 @@ class TestTractogram(unittest.TestCase):
         config.inverse_curvature = 10.0
         config.noise_variance = 0.01
         config.streamline.length.maximum = 40.0
-        algorithm = tg.algorithms.Diffusion(
-            tensor.get_fdata(), tensor.affine, len(seeds), config
-        )
-        streamlines = algorithm.run(seeds)
+        tracto, _ = tg.algorithms.diffusion.tractogram(tensor, seeds, config)
+        streamlines = tracto.streamlines
 
         # The streamlines should run until the maximum length is reached.
         for streamline in streamlines:
@@ -184,8 +184,10 @@ class TestTractogram(unittest.TestCase):
         config.step_size = 1e-3
         config.inverse_curvature = 50.0
         config.noise_variance = 0.1
-        algorithm = tg.algorithms.Diffusion(fod, affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
+        tracto, _ = tg.algorithms.diffusion.tractogram(
+            nib.Nifti1Image(fod, affine), seeds, config
+        )
+        streamlines = tracto.streamlines
 
         # The streamlines should run until the maximum lenght is reached.
         for streamline in streamlines:

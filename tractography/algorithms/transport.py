@@ -119,6 +119,8 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
 
 def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache: Cache | None = None) -> Tuple[Tractogram, Cache]:
 
+    n_streamlines = len(seeds)
+
     if cache is None:
 
         # Generate a new cache for the OpenCL setup.
@@ -136,7 +138,6 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
         cache.fod = cl.new_read_only_buffer(fod.get_fdata().astype(np.float32))
 
         # Create the seed buffer on the device. They are stored as two float4.
-        n_streamlines = len(seeds)
         seeds_array = np.empty((n_streamlines, 8), dtype=np.float32)
         cache.seeds = cl.new_read_only_buffer(seeds_array)
 
@@ -182,18 +183,6 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
     cl.copy_from_buffer(cache.lengths, lengths)
 
     return Tractogram([streamlines[i, :n, :3] for i, n in enumerate(lengths)], affine_to_rasmm=np.eye(4)), cache
-
-
-class Transport:
-
-    def __init__(self, odf, affine, n_streamlines, config):
-        self._cache = None
-        self._odf = Nifti1Image(odf, affine)
-        self._config = config
-
-    def run(self, seeds):
-        tracto, self._cache = tractogram(self._odf, seeds, self._config, self._cache)
-        return tracto.streamlines
 
 
 def connectome(
@@ -299,4 +288,4 @@ def connectome(
     return conn_matrix
 
 
-register(Algorithm.TRANSPORT, Configuration, Transport, histogram, connectome)
+register(Algorithm.TRANSPORT, Configuration, tractogram, histogram, connectome)
