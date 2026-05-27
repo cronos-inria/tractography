@@ -5,7 +5,7 @@ import tractography as tg
 
 
 class TestConfiguration(unittest.TestCase):
-    """Test the tg.algorithms.configuration module"""
+    """Test the tg.algorithms.core module"""
 
     def test_load(self):
         """Test the tg.configuration.load function"""

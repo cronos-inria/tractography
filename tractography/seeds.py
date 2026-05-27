@@ -10,7 +10,7 @@ import numpy.typing as npt
 
 from . import core
 from .algorithms import opencl
-from tractography.algorithms.configuration import LocalModel
+from tractography.algorithms.core import LocalModel
 
 
 @dataclass

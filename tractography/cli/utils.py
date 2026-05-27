@@ -56,7 +56,7 @@ def add_tractography_config(parser: argparse.ArgumentParser):
 
 
 def set_tractography_config(
-    config: tg.algorithms.configuration.BaseConfiguration, kwargs
+    config: tg.algorithms.core.BaseConfiguration, kwargs
 ):
     """Map CLI arguments back to the configuration"""
 

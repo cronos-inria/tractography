@@ -9,7 +9,13 @@ import pydantic
 from ..seeds import Seed
 from .. import core, seeds as seeds_module, utils
 from . import opencl as cl
-from .configuration import Algorithm, BaseConfiguration, LocalModel
+from .core import (
+    Algorithm,
+    BaseCache,
+    BaseConfiguration,
+    LocalModel,
+    cache_needs_rebuild,
+)
 from . import register
 
 
@@ -22,7 +28,7 @@ class Configuration(BaseConfiguration):
 
 
 @dataclass
-class Cache:
+class Cache(BaseCache):
     """Cache for the OpenCL setup of the deterministic algorithm.
 
     This cache is used to store the OpenCL buffers and program, so that they can
@@ -39,17 +45,6 @@ class Cache:
 
     # The discretized direction sphere vertices.
     vertices: cl.Buffer | None = None
-
-    # The array of seeds.
-    seeds: cl.Buffer | None = None
-
-    # The output buffers for the streamlines and their lengths.
-    streamlines: cl.Buffer | None = None
-    lengths: cl.Buffer | None = None
-
-    # The OpenCL program.
-    program: cl.Program | None = None
-
 
 def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     """Generate a streamline histogram
@@ -143,10 +138,20 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
 
     n_streamlines = len(seeds)
 
-    if cache is None:
+    if cache_needs_rebuild(
+        cache,
+        cache_type=Cache,
+        fod_shape=fod.shape,
+        n_streamlines=n_streamlines,
+        n_steps=config.n_steps,
+    ):
 
         # Generate a new cache for the OpenCL setup.
         cache = Cache()
+
+        cache.fod_shape = tuple(fod.shape)
+        cache.n_streamlines = n_streamlines
+        cache.n_steps = config.n_steps
 
         odf = fod.get_fdata()
         affine = fod.affine if fod.affine is not None else np.eye(4)
@@ -192,6 +197,9 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
             "n_streamlines": n_streamlines,
         }
         cache.program = cl.build_program(values, "algorithms/deterministic/tractogram.cl")
+
+    # Type narrowing.
+    assert cache is not None
 
     # Move seeds to the device.
     seeds_array = seeds_module.to_array(seeds).astype(np.float32)
