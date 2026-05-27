@@ -113,6 +113,31 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
 
 
 def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache: Cache | None = None) -> Tuple[Tractogram, Cache]:
+    """Generate streamlines using transport tracking.
+
+    Args:
+        fod: The FOD image used to estimate the local tracking directions.
+        seeds: Seed locations used to initialize each streamline.
+        config: Transport tracking configuration, including step size, inverse
+            curvature, and number of steps.
+        cache: Optional OpenCL cache reused across calls when the input shape and
+            configuration are unchanged.
+
+    The cache stores the OpenCL buffers and compiled program used for tracking.
+    When the input FOD shape, number of streamlines, and number of steps match the
+    previous call, the existing cache is reused to avoid reallocating buffers and
+    rebuilding the OpenCL program.
+
+    Returns:
+        A tuple containing the generated tractogram and the updated cache.
+
+    Raises:
+        ValueError: If the FOD image, seeds, or configuration are incompatible with
+            transport tracking or the cached OpenCL resources.
+        np.linalg.LinAlgError: If an affine matrix cannot be inverted.
+        RuntimeError: If OpenCL program compilation or kernel execution fails.
+
+    """
 
     n_streamlines = len(seeds)
 
