@@ -3,14 +3,15 @@ from typing import Optional
 from . import algorithms, configuration, connectivity, core, nifti, seeds, utils
 from .algorithms.core import Algorithm, BaseConfiguration
 
-import nibabel as nib
+from nibabel.nifti1 import Nifti1Image
+from nibabel.streamlines.tractogram import Tractogram
 import numpy as np
 import numpy.typing as npt
 
 
 def connectome(
-    fod: nib.Nifti1Image,
-    segmentation: nib.Nifti1Image,
+    fod: Nifti1Image,
+    segmentation: Nifti1Image,
     n_seeds: int = 1000000,
     config: BaseConfiguration | None = None,
     distance_upper_bound: float = 4.0,
@@ -86,11 +87,11 @@ def connectome(
 
 
 def histogram(
-    fod: nib.Nifti1Image,
-    seed_mask: nib.Nifti1Image,
+    fod: Nifti1Image,
+    seed_mask: Nifti1Image,
     n_seeds: int = 1000000,
     config: BaseConfiguration | None = None,
-) -> nib.Nifti1Image:
+) -> Nifti1Image:
     """Generates the streamlines histogram
 
     The histogram correponds to the FOD associated to a particular tracgogram. That is,
@@ -129,15 +130,14 @@ def histogram(
         config,
     )
 
-    return nib.Nifti1Image(histogram, fod.affine)
+    return Nifti1Image(histogram, fod.affine)
 
 
 def tractogram(
-    fod: nib.Nifti1Image,
+    fod: Nifti1Image,
     seeds: list[seeds.Seed],
     config: BaseConfiguration | None = None,
-    endpoints_only: bool = False,
-) -> nib.streamlines.Tractogram:
+) -> Tractogram:
     """Generate a tractogram from dMRI data
 
     The tractogram, which is simply a list of streamlines, is generated
@@ -149,8 +149,6 @@ def tractogram(
         config: Configuration object specifying processing parameters and the
             algorithm to use. If None, a default configuration for the
             transport algorithm is loaded. See tg.configuration.load.
-        endpoints_only: Only the start and end points of the streamlines will
-            be returned. Greatly reduces the memory footprint.
 
     Return:
         The generated tractogram, i.e. a list of streamlines in RAS+ millimeter
@@ -166,7 +164,7 @@ def tractogram(
     # No seeds means no streamlines.
     n_seeds = len(seeds)
     if n_seeds == 0:
-        return nib.streamlines.Tractogram([], affine_to_rasmm=np.eye(4))
+        return Tractogram([], affine_to_rasmm=np.eye(4))
 
     # Pad the seeds to have a multiple of the batch size.
     padded_seeds = list(seeds)
@@ -177,17 +175,15 @@ def tractogram(
     # Perform tractography in batches.
     all_streamlines = []
     cache = None
-    for s in np.array_split(padded_seeds, len(padded_seeds) // config.batch_size):
+    for i in range(0, len(padded_seeds), config.batch_size):
+        s = padded_seeds[i : i + config.batch_size]
         tracto, cache = implementation(fod, s, config, cache)
         streamlines = tracto.streamlines
 
         # Clean a bit.
         streamlines = [s for s in streamlines if len(s) > config.min_n_points]
 
-        if endpoints_only:
-            streamlines = [s[[0, -1]] for s in streamlines]
-
         all_streamlines.extend(streamlines)
 
     all_streamlines = all_streamlines[:n_seeds]  # Ignore extra seeds.
-    return nib.streamlines.Tractogram(all_streamlines, affine_to_rasmm=np.eye(4))
+    return Tractogram(all_streamlines, affine_to_rasmm=np.eye(4))
