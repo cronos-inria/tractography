@@ -9,6 +9,8 @@ import tomllib
 import numpy as np
 import pydantic
 
+from .. import core as tractography_core
+
 
 _DEFAULT_CONFIG_DIR = files("tractography.resources") / "config"
 
@@ -122,3 +124,29 @@ def cache_needs_rebuild(
             return True
 
     return False
+
+
+def discretize_fod(odf: np.ndarray, n_directions: int = 400) -> tuple[np.ndarray, np.ndarray]:
+    """Discretize FOD data using spherical harmonics at direction vertices.
+
+    Generates a uniform distribution of direction vectors on the sphere using
+    fibonacci sampling, then converts spherical harmonics coefficients to 
+    1D probability mass functions evaluated at those directions using the 
+    inverse SH transform.
+
+    Args:
+        odf: FOD data array of shape (nx, ny, nz, n_coefficients).
+        n_directions: Number of direction vertices to generate (default 400).
+
+    Returns:
+        Tuple of (vertices, fod_values):
+            vertices: Array of shape (n_directions, 3) with unit vectors on the sphere.
+            fod_values: Discretized FOD array of shape (nx, ny, nz, n_directions), clipped to [0, inf).
+    """
+    vertices = tractography_core.fibonacci_sphere(n_directions)
+    n_coefficients = odf.shape[-1]
+    azimuths, colatitudes, _ = tractography_core.cart2sph(*vertices.T)
+    matrix, _ = tractography_core.ishtmtx(azimuths, colatitudes, n_coefficients)
+    fod_values = np.maximum(np.dot(odf.reshape((-1, n_coefficients)), matrix.T), 0)
+    fod_values = fod_values.reshape((*odf.shape[:3], -1))
+    return vertices, fod_values
