@@ -9,7 +9,7 @@ from .configuration import Algorithm, BaseConfiguration
 @dataclass(frozen=True)
 class RegistryEntry:
     configuration: type[BaseConfiguration]
-    tracker: type
+    tractogram: Callable
     histogram: Callable
     connectome: Optional[Callable] = None
 
@@ -20,23 +20,23 @@ _REGISTRY: Final[dict[Algorithm, RegistryEntry]] = {}
 def register(
     algorithm: Algorithm,
     configuration: type[BaseConfiguration],
-    tracker: type,
+    tractogram: Callable,
     histogram: Callable,
     connectome: Optional[Callable] = None,
 ) -> None:
-    """Register a tracker implementation class for an algorithm."""
+    """Register algorithm implementations."""
     if algorithm in _REGISTRY:
         raise ValueError(f"Tracker already registered for algorithm: {algorithm}")
     _REGISTRY[algorithm] = RegistryEntry(
         configuration=configuration,
-        tracker=tracker,
+        tractogram=tractogram,
         histogram=histogram,
         connectome=connectome,
     )
 
 
 def resolve(algorithm: Algorithm) -> RegistryEntry:
-    """Resolve the tracker class for the given algorithm."""
+    """Resolve implementations for the given algorithm."""
     try:
         return _REGISTRY[algorithm]
     except KeyError as e:
@@ -50,9 +50,3 @@ from . import deterministic as deterministic  # noqa: F401,E402
 from . import diffusion as diffusion  # noqa: F401,E402
 from . import probabilistic as probabilistic  # noqa: F401,E402
 from . import transport as transport  # noqa: F401,E402
-
-# Imported directly for testing. Should be removed.
-from .deterministic import Deterministic
-from .diffusion import Diffusion
-from .probabilistic import Probabilistic
-from .transport import Transport

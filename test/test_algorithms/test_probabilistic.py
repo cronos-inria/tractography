@@ -59,8 +59,10 @@ class TestProbabilistic(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.PROBABILISTIC)
-        algorithm = tg.algorithms.Probabilistic(fod, affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
+        tracto, _ = tg.algorithms.probabilistic.tractogram(
+            nib.Nifti1Image(fod, affine), seeds, config
+        )
+        streamlines = tracto.streamlines
 
         # Save the streamlines for QA.
         tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
@@ -78,8 +80,8 @@ class TestProbabilistic(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.PROBABILISTIC)
-        algorithm = tg.algorithms.Probabilistic(fod.get_fdata(), fod.affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
+        tracto, _ = tg.algorithms.probabilistic.tractogram(fod, seeds, config)
+        streamlines = tracto.streamlines
 
         # Save the streamlines for QA.
         tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))

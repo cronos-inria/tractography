@@ -161,14 +161,14 @@ def tractogram(
     if config is None:
         config = configuration.load(Algorithm.TRANSPORT)
 
-    tracker_cls = algorithms.resolve(config.algorithm).tracker
-    implementation = tracker_cls(fod.get_fdata(), fod.affine, config.batch_size, config)
+    implementation = algorithms.resolve(config.algorithm).tractogram
 
-    # Pad the seeds to have a multiple of the batch size.
+    # No seeds means no streamlines.
     n_seeds = len(seeds)
     if n_seeds == 0:
         return nib.streamlines.Tractogram([], affine_to_rasmm=np.eye(4))
 
+    # Pad the seeds to have a multiple of the batch size.
     padded_seeds = list(seeds)
     extra_seeds = n_seeds % config.batch_size
     if extra_seeds > 0:
@@ -176,8 +176,10 @@ def tractogram(
 
     # Perform tractography in batches.
     all_streamlines = []
+    cache = None
     for s in np.array_split(padded_seeds, len(padded_seeds) // config.batch_size):
-        streamlines = implementation.run(s)
+        tracto, cache = implementation(fod, s, config, cache)
+        streamlines = tracto.streamlines
 
         # Clean a bit.
         streamlines = [s for s in streamlines if len(s) > config.min_n_points]

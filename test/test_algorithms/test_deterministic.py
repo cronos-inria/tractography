@@ -61,8 +61,10 @@ class TestDeterministic(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DETERMINISTIC)
-        algorithm = tg.algorithms.Deterministic(fod, affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
+        tracto, _ = tg.algorithms.deterministic.tractogram(
+            nib.Nifti1Image(fod, affine), seeds, config
+        )
+        streamlines = tracto.streamlines
 
         # Save the streamlines for QA.
         tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
@@ -80,8 +82,8 @@ class TestDeterministic(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DETERMINISTIC)
-        algorithm = tg.algorithms.Deterministic(fod.get_fdata(), wm.affine, len(seeds), config)
-        streamlines = algorithm.run(seeds)
+        tracto, _ = tg.algorithms.deterministic.tractogram(fod, seeds, config)
+        streamlines = tracto.streamlines
 
         # Save the streamlines for QA.
         tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
