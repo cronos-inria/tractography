@@ -15,6 +15,7 @@ from .core import (
     BaseConfiguration,
     LocalModel,
     cache_needs_rebuild,
+    discretize_fod,
 )
 from . import register
 
@@ -43,8 +44,8 @@ class Cache(BaseCache):
     # The affine transform from world to voxel space.
     fod_inverse_affine: cl.Buffer | None = None
 
-    # The discretized direction sphere vertices.
-    vertices: cl.Buffer | None = None
+    # The discretized directions on the sphere.
+    directions: cl.Buffer | None = None
 
     # The random number generator states, one per streamline.
     randoms: cl.Buffer | None = None
@@ -74,15 +75,8 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     # Generate a set of orientation where the FODs are evaluated. On the
     # device the vertices are represented as float4.
     n_directions = 300
-    directions = core.fibonacci_sphere(n_directions)
+    directions, fod_values = discretize_fod(fod, n_directions)
     directions_homogeneous = np.c_[directions, np.zeros((n_directions,))]
-
-    # Convert the spherical harmonics to 1D probability mass functions.
-    n_coefficients = fod.shape[-1]
-    azimuths, colatitudes, _ = core.cart2sph(*directions.T)
-    matrix, _ = core.ishtmtx(azimuths, colatitudes, n_coefficients)
-    fod_values = np.maximum(np.dot(fod.reshape((-1, n_coefficients)), matrix.T), 0)
-    fod_values = fod_values.reshape((*fod.shape[:3], -1))
 
     # Send the data to the device.
     fod_values_buffer = cl.new_read_only_buffer(fod_values.astype(np.float32))
@@ -157,27 +151,22 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
         cache.n_streamlines = n_streamlines
         cache.n_steps = config.n_steps
 
-        odf = fod.get_fdata()
+        fod_data = fod.get_fdata()
         affine = fod.affine if fod.affine is not None else np.eye(4)
 
         # Generate a set of orientations where the FODs are evaluated. On the
         # device the vertices are represented as float4.
         n_points = 300
-        vertices = core.fibonacci_sphere(n_points)
-        device_vertices = np.c_[vertices, np.zeros((n_points,))]
-        cache.vertices = cl.new_read_only_buffer(device_vertices.astype(np.float32))
+        directions, fod_values = discretize_fod(fod_data, n_points)
+        directions_homogeneous = np.c_[directions, np.zeros((n_points,))]
+        cache.directions = cl.new_read_only_buffer(directions_homogeneous.astype(np.float32))
 
         # Precompute the inverse affine.
         iaffine = np.linalg.inv(affine).astype(np.float32)
         cache.fod_inverse_affine = cl.new_read_only_buffer(iaffine)
 
-        # Convert the spherical harmonics to 1D probability mass functions.
-        n_coefficients = odf.shape[-1]
-        azimuths, colatitudes, _ = core.cart2sph(*vertices.T)
-        matrix, _ = core.ishtmtx(azimuths, colatitudes, n_coefficients)
-        odf_values = np.maximum(np.dot(odf.reshape((-1, n_coefficients)), matrix.T), 0)
-        odf_values = odf_values.reshape((*odf.shape[:3], -1))
-        cache.values = cl.new_read_only_buffer(odf_values.astype(np.float32))
+        # Use the discretized FOD values from the helper.
+        cache.values = cl.new_read_only_buffer(fod_values.astype(np.float32))
 
         # Create the seed buffer on the device. They are stored as two float4.
         seeds_array = np.empty((n_streamlines, 8), dtype=np.float32)
@@ -197,10 +186,10 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
 
         # Build the OpenCL program that implements tractography.
         values = {
-            "nx": odf.shape[0],
-            "ny": odf.shape[1],
-            "nz": odf.shape[2],
-            "n_directions": len(vertices),
+            "nx": fod_data.shape[0],
+            "ny": fod_data.shape[1],
+            "nz": fod_data.shape[2],
+            "n_directions": len(directions),
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
@@ -219,7 +208,7 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
     args = (
         cache.values,
         cache.fod_inverse_affine,
-        cache.vertices,
+        cache.directions,
         cache.seeds,
         cache.randoms,
         np.float32(config.step_size),
