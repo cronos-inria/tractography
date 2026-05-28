@@ -13,6 +13,9 @@ import numpy as np
 import tractography as tg
 
 
+_ALGORITHM = tg.Algorithm.TRANSPORT
+
+
 _DESCRIPTION = """
 Perform diffusion magnetic resonance imaging tractography.
 """
@@ -22,8 +25,8 @@ perform diffusion MRI tractography
 """
 
 
-_ALGORITHM_HELP = """
-the algorithm used for tractography
+_ALGORITHM_HELP = f"""
+the algorithm used for tractography (default: {_ALGORITHM})
 """
 
 _IMAGE_HELP = """
@@ -47,7 +50,7 @@ def main(
     image_path: Path,
     seeds_path: Path,
     tractogram_path: Path,
-    algorithm: tg.Algorithm = tg.Algorithm.TRANSPORT,
+    algorithm: tg.Algorithm = _ALGORITHM,
     **kwargs,
 ):
     """Entry-point of the tractography CLI"""
@@ -60,20 +63,20 @@ def main(
     seeds = tg.seeds.load(seeds_path)
 
     # Load the FOD image and apply the mask if one was provided.
-    fod = nib.load(image_path)
+    fod = nib.loadsave.load(image_path)
     if "mask" in kwargs and kwargs["mask"] is not None:
-        mask = nib.load(kwargs["mask"])
+        mask = nib.loadsave.load(kwargs["mask"])
         fod = tg.nifti.multiply(fod, mask)
 
     tractogram = tg.tractogram(fod, seeds, config)
 
     # Save the resulting tractogram.
-    tck = nib.streamlines.TckFile(tractogram)
+    tck = nib.streamlines.tck.TckFile(tractogram)
     tck.save(tractogram_path)
 
 
 def add_parser(subparsers):
-    """Add the surparser for the mask subcommand"""
+    """Add the subparser for the tractogram subcommand"""
     subparser = subparsers.add_parser(
         "tractogram", description=_DESCRIPTION, help=_HELP
     )
@@ -84,6 +87,7 @@ def add_parser(subparsers):
     subparser.add_argument(
         "--algorithm",
         type=tg.Algorithm,
+        default=_ALGORITHM,
         choices=list(tg.Algorithm),
         help=_ALGORITHM_HELP,
     )
@@ -93,7 +97,3 @@ def add_parser(subparsers):
 
     subparser.set_defaults(func=main)
     return subparser
-
-
-if __name__ == "__main__":
-    main()
