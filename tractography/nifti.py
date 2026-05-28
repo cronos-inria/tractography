@@ -1,13 +1,13 @@
-import nibabel as nib
 import numpy as np
+from nibabel.nifti1 import Nifti1Image
 from scipy import ndimage
 
 
 def multiply(
-    left: nib.Nifti1Image,
-    right: nib.Nifti1Image,
+    left: Nifti1Image,
+    right: Nifti1Image,
     order: int = 0,
-) -> nib.Nifti1Image:
+) -> Nifti1Image:
     """Multiplies two NIfTI images in world space
 
     The `right` image is resampled to the geometry (affine and shape) of the
@@ -51,13 +51,13 @@ def multiply(
     new_header = left.header.copy()
     new_header.set_data_dtype(product.dtype)
 
-    return nib.Nifti1Image(product, left.affine, header=new_header)
+    return Nifti1Image(product, left.affine, header=new_header)
 
 
 def threshold(
-    nii: nib.Nifti1Image,
+    nii: Nifti1Image,
     value: float = 0.0,
-) -> nib.Nifti1Image:
+) -> Nifti1Image:
     """Create bitwise image by thresholding image intensity
 
     Args:
@@ -77,4 +77,4 @@ def threshold(
     new_header = nii.header.copy()
     new_header.set_data_dtype(np.uint8)
 
-    return nib.Nifti1Image(mask_data, nii.affine, header=new_header)
+    return Nifti1Image(mask_data, nii.affine, header=new_header)
