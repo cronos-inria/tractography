@@ -58,9 +58,6 @@ __kernel void connectome(
 
         float4 start_location = location;
 
-        float ylm[$n_coefficients];
-        float ylm_dt[$n_coefficients];
-        float ylm_dp[$n_coefficients];
         float time = 0;
         size_t n = 1;
         while (n < $n_steps) {

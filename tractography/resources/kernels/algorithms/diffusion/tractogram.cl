@@ -35,9 +35,6 @@ __kernel void tractogram(
 	float4 point = seeds[gid][0];
 	float4 orientation = seeds[gid][1];
 
-	float ylm[$n_coefficients];
-	float ylm_dt[$n_coefficients];
-	float ylm_dp[$n_coefficients]; 
 	streamlines[gid][0] = point;
 	size_t n = 1;
 	float time = 0;
