@@ -57,7 +57,7 @@ def ishtmtx(azimuths, colatitudes, n_coefficients):
 
 def remove_duplicate_endpoints(
     streamlines: npt.ArrayLike, step_size: float
-) -> list(npt.NDArray):
+) -> list[npt.NDArray]:
     """Removes duplicate points at the end of streamlines
 
     During the tractography process, streamlines are sometimes generated with
