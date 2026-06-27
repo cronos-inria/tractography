@@ -58,6 +58,81 @@ class TestCore(unittest.TestCase):
 class TestSpharm(unittest.TestCase):
     """Test the OpenCL implementation of spherical harmonic functions"""
 
+    def test_ishtmtx_antipodal_symmetry(self):
+
+        n = 20
+        directions = tg.core.fibonacci_sphere(n)
+        azimuths, colatitudes, _ = tg.core.cart2sph(*directions.T)
+
+        antipodal_directions = -directions
+        antipodal_azimuths, antipodal_colatitudes, _ = tg.core.cart2sph(
+            *antipodal_directions.T
+        )
+
+        values = np.zeros((n, 45), np.float32)
+        antipodal_values = np.zeros((n, 45), np.float32)
+
+        # Create the global OpenCL context.
+        _context = tg.algorithms.opencl._context
+        _queue = tg.algorithms.opencl._queue
+
+        flags = cl.mem_flags.READ_ONLY
+        azimuths_buffer = cl.Buffer(_context, flags, size=azimuths.nbytes)
+        cl.enqueue_copy(_queue, azimuths_buffer, azimuths.astype(np.float32))
+
+        flags = cl.mem_flags.READ_ONLY
+        colatitudes_buffer = cl.Buffer(_context, flags, size=colatitudes.nbytes)
+        cl.enqueue_copy(_queue, colatitudes_buffer, colatitudes.astype(np.float32))
+
+        flags = cl.mem_flags.READ_ONLY
+        antipodal_azimuths_buffer = cl.Buffer(_context, flags, size=azimuths.nbytes)
+        cl.enqueue_copy(
+            _queue, antipodal_azimuths_buffer, antipodal_azimuths.astype(np.float32)
+        )
+
+        flags = cl.mem_flags.READ_ONLY
+        antipodal_colatitudes_buffer = cl.Buffer(
+            _context, flags, size=colatitudes.nbytes
+        )
+        cl.enqueue_copy(
+            _queue,
+            antipodal_colatitudes_buffer,
+            antipodal_colatitudes.astype(np.float32),
+        )
+
+        flags = cl.mem_flags.READ_WRITE
+        values_buffer = cl.Buffer(_context, flags, size=values.nbytes)
+        antipodal_values_buffer = cl.Buffer(
+            _context, flags, size=antipodal_values.nbytes
+        )
+
+        # Compile the OpenCL program that implements spherical harmonics.
+        program = tg.algorithms.opencl.build_program(dict(), "utils/spharm.cl")
+
+        program.test_ishtmtx(
+            _queue,
+            (1,),
+            None,
+            azimuths_buffer,
+            colatitudes_buffer,
+            np.uint32(len(azimuths)),
+            values_buffer,
+        )
+        program.test_ishtmtx(
+            _queue,
+            (1,),
+            None,
+            antipodal_azimuths_buffer,
+            antipodal_colatitudes_buffer,
+            np.uint32(len(antipodal_azimuths)),
+            antipodal_values_buffer,
+        )
+
+        cl.enqueue_copy(_queue, values, values_buffer)
+        cl.enqueue_copy(_queue, antipodal_values, antipodal_values_buffer)
+
+        np.testing.assert_array_almost_equal(values, antipodal_values, 5)
+
     def test_ishtmtx(self):
 
         n = 100
