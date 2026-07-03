@@ -56,13 +56,14 @@ class TestDeterministic(unittest.TestCase):
         # Prepare the data.
         fod = test.data.uniform_isotropic()
         affine = np.eye(4)
-        seeds = tg.seeds.from_fod(fod, affine, 1000)
-        nib.save(nib.Nifti1Image(fod, affine), _TEST_RESULTS_DIR / "uniform-fod.nii.gz")
+        nii = nib.nifti1.Nifti1Image(fod, affine)
+        seeds = tg.seeds.from_fod(nii, 1000)
+        nib.save(nii, _TEST_RESULTS_DIR / "uniform-fod.nii.gz")
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DETERMINISTIC)
         tracto, _ = tg.algorithms.deterministic.tractogram(
-            nib.Nifti1Image(fod, affine), seeds, config
+            nii, seeds, config
         )
         streamlines = tracto.streamlines
 
@@ -78,7 +79,7 @@ class TestDeterministic(unittest.TestCase):
         fod, wm, _ = test.data.cross()
         nib.save(fod, _TEST_RESULTS_DIR / "cross-fod.nii.gz")
         nib.save(wm, _TEST_RESULTS_DIR / "cross-wm.nii.gz")
-        seeds = tg.seeds.from_mask(wm.get_fdata(), wm.affine, 1000)
+        seeds = tg.seeds.from_mask(wm, 1000)
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DETERMINISTIC)

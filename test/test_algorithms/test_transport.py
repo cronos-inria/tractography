@@ -183,12 +183,12 @@ class TestTractogram(unittest.TestCase):
         # Prepare the data.
         fod = test.data.uniform_isotropic()
         affine = np.eye(4)
-        seeds = tg.seeds.from_fod(fod, affine, 1000)
-        fod = nib.nifti1.Nifti1Image(fod, affine)
+        nii = nib.nifti1.Nifti1Image(fod, affine)
+        seeds = tg.seeds.from_fod(nii, 1000)
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        tractogram, _ = tg.algorithms.transport.tractogram(fod, seeds, config)
+        tractogram, _ = tg.algorithms.transport.tractogram(nii, seeds, config)
 
         # In an isotropic field, transport tractography should produce only
         # straight lines.
@@ -201,8 +201,7 @@ class TestTractogram(unittest.TestCase):
 
         # Prepare the data.
         fod, wm, _ = test.data.cross()
-        affine = wm.affine if wm.affine is not None else np.eye(4)
-        seeds = tg.seeds.from_mask(wm.get_fdata(), affine, 10000)
+        seeds = tg.seeds.from_mask(wm, 10000)
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.TRANSPORT)
@@ -210,7 +209,7 @@ class TestTractogram(unittest.TestCase):
 
         # Streamlines should cover the whole cross, but not go outside of it.
         points = np.vstack([s[:-1] for s in tractogram.streamlines])
-        voxels = np.round(nib.affines.apply_affine(np.linalg.inv(affine), points)).astype(int)
+        voxels = np.round(nib.affines.apply_affine(np.linalg.inv(fod.affine), points)).astype(int)
         mask = np.zeros(wm.shape, dtype=np.uint8)
         mask[*voxels.T] = 1
         np.testing.assert_array_equal(mask, wm.get_fdata().astype(np.uint8))

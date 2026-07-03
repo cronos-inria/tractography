@@ -97,12 +97,13 @@ class TestTractogram(unittest.TestCase):
         # Prepare the data.
         fod = test.data.uniform_isotropic()
         affine = np.eye(4)
-        seeds = tg.seeds.from_fod(fod, affine, 1000)
+        nii = nib.nifti1.Nifti1Image(fod, affine)
+        seeds = tg.seeds.from_fod(nii, 1000)
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DIFFUSION)
         tracto, _ = tg.algorithms.diffusion.tractogram(
-            nib.Nifti1Image(fod, affine), seeds, config
+            nii, seeds, config
         )
         streamlines = tracto.streamlines
 
@@ -113,14 +114,15 @@ class TestTractogram(unittest.TestCase):
         """Test tractography on the DTI cross dataset"""
 
         # Prepare the data.
-        fod, wm, _ = test.data.tensor.cross()
-        seeds = tg.seeds.from_mask(wm.get_fdata(), wm.affine, 1000)
+        tensor, wm, _ = test.data.tensor.cross()
+        nii = nib.nifti1.Nifti1Image(tensor, tensor.affine)
+        seeds = tg.seeds.from_mask(wm, 1000)
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DIFFUSION)
         config.inverse_curvature = 5.0
         config.noise_variance = 0.05
-        tracto, _ = tg.algorithms.diffusion.tractogram(fod, seeds, config)
+        tracto, _ = tg.algorithms.diffusion.tractogram(tensor, seeds, config)
         streamlines = tracto.streamlines
 
         # Verify the number of streamline produced.
@@ -131,7 +133,7 @@ class TestTractogram(unittest.TestCase):
 
         # Prepare the data.
         fod, wm, _ = test.data.cross()
-        seeds = tg.seeds.from_mask(wm.get_fdata(), wm.affine, 1000)
+        seeds = tg.seeds.from_mask(wm, 1000)
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DIFFUSION)

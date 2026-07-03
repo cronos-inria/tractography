@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import nibabel as nib
+from nibabel.nifti1 import Nifti1Image
 import nimesh
 import numpy as np
 import numpy.typing as npt
@@ -75,15 +76,14 @@ def from_surface(
     return [Seed(el, n) for el, n in zip(locations, orientations)]
 
 
-def from_mask(mask: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed]:
+def from_mask(mask: Nifti1Image, n_seeds: int) -> list[Seed]:
     """Generate seeds from a 3D mask
 
     The seeds are generated uniformly inside voxels with non-zero
     values in the mask. The orientations are uniform on the sphere.
 
     Args:
-        mask: The numpy array containing the mask.
-        affine: The affine transform to native space.
+        mask: The Nifti1Image containing the mask.
         n_seeds: The number of seeds to generate.
 
     Return:
@@ -91,11 +91,13 @@ def from_mask(mask: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed
 
     """
 
-    # Get the non-zero voxels.
-    voxels = np.array(list(zip(*np.nonzero(mask))))
+    # Get the non-zero voxels and generate random points inside them.
+    voxels = np.array(list(zip(*np.nonzero(mask.get_fdata()))))
     indices = np.random.randint(len(voxels), size=n_seeds)
     locations_voxel = voxels[indices] + np.random.rand(n_seeds, 3) - [0.5, 0.5, 0.5]
-    locations = nib.affines.apply_affine(affine, locations_voxel)
+    locations = nib.affines.apply_affine(mask.affine, locations_voxel)
+
+    # The orientation are uniformly distributed on the sphere.
     orientations = np.random.randn(n_seeds, 3)
     orientations /= np.linalg.norm(orientations, axis=1, keepdims=True)
 
@@ -103,8 +105,7 @@ def from_mask(mask: npt.NDArray, affine: npt.NDArray, n_seeds: int) -> list[Seed
 
 
 def from_fod(
-    fod: npt.NDArray,
-    affine: npt.NDArray,
+    fod: Nifti1Image,
     n_seeds: int,
     as_array: bool = False,
     use_opencl: bool = True,
@@ -116,8 +117,7 @@ def from_fod(
     FOD.
 
     Args:
-        fod: The numpy array containing the FOD.
-        affine: The affine transform to native space.
+        fod: The Nifti1Image containing the FOD.
         n_seeds: The number of seeds to generate.
         as_array: If True, the seeds are returned as a numpy array with a shape of (n_seeds, 8).
         use_opencl: If True, the seeds will be generated using the OpenCL
@@ -131,11 +131,11 @@ def from_fod(
     if use_opencl:
 
         # Use a sparse format for the FOD.
-        mask = np.any(fod != 0, axis=-1)
+        mask = np.any(fod.get_fdata() != 0, axis=-1)
         indices = np.array(np.nonzero(mask), dtype=np.float32).T
         indices = np.hstack((indices, np.ones((len(indices), 1)))).astype(np.float32)
-        inline_fod = fod[mask].astype(np.float32)
-        affine = affine.astype(np.float32)
+        inline_fod = fod.get_fdata()[mask].astype(np.float32)
+        affine = fod.affine.astype(np.float32)
 
         randoms = np.random.randint(4294967295, size=(n_seeds, 2)).astype(np.uint32)
 
@@ -172,10 +172,10 @@ def from_fod(
 
     else:
         # Get the non-zero voxels.
-        voxels = np.array(list(zip(*np.nonzero(fod[..., 0]))))
+        voxels = np.array(list(zip(*np.nonzero(np.any(fod.get_fdata() != 0, axis=-1)))))
         indices = np.random.randint(len(voxels), size=n_seeds)
         locations_voxel = voxels[indices] + np.random.rand(n_seeds, 3) - [0.5, 0.5, 0.5]
-        locations = nib.affines.apply_affine(affine, locations_voxel)
+        locations = nib.affines.apply_affine(fod.affine, locations_voxel)
 
         # Preprare discretization of the ODFs.
         vertices = core.fibonacci_sphere(1000)
@@ -186,7 +186,7 @@ def from_fod(
         orientations = []
         for index in indices:
             voxel = voxels[index]
-            local = fod[*voxel]
+            local = fod.get_fdata()[tuple(voxel)]
             values = np.dot(ishtmtx, local)
             cumsum = np.cumsum(np.maximum(values, 0.0))
             i = np.searchsorted(cumsum, np.random.rand() * cumsum[-1])

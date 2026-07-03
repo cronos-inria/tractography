@@ -60,10 +60,9 @@ class TestFromODF(unittest.TestCase):
         """Test the simplest use-case"""
 
         fod, wm, _ = test.data.cross()
-        seeds = tg.seeds.from_mask(wm.get_fdata(), wm.affine, 1000)
+        seeds = tg.seeds.from_mask(wm, 1000)
 
-        fod_data = tg.utils.normalize_odf(fod.get_fdata())
-        seeds = tg.seeds.from_fod(fod_data, fod.affine, 10000, use_opencl=False)
+        seeds = tg.seeds.from_fod(fod, 10000, use_opencl=False)
         self.assertEqual(len(seeds), 10000)
 
         # Test simple saving and loading to .tck.
@@ -77,7 +76,7 @@ class TestFromODF(unittest.TestCase):
 
         # Returning as an array should change nothing.
         seeds = tg.seeds.from_fod(
-            fod_data, fod.affine, 10000, as_array=True, use_opencl=False
+            fod, 10000, as_array=True, use_opencl=False
         )
         self.assertEqual(seeds.shape, (10000, 8))
 
@@ -102,8 +101,7 @@ class TestOpenCLFromFOD(unittest.TestCase):
         fod, mask, _ = test.data.cross()
         fod = tg.nifti.multiply(fod, mask)
         seeds = tg.seeds.from_fod(
-            fod.get_fdata(),
-            fod.affine,
+            fod,
             n_seeds,
             as_array=True,
             use_opencl=True,
@@ -163,8 +161,9 @@ class TestOpenCLFromFOD(unittest.TestCase):
         coefficients = sh_fod.get_fdata()[5, 1, 0]
         fod = np.zeros((1, 1, 1, 45), dtype=np.float32)
         fod[0, 0, 0] = coefficients
+        nii = nib.nifti1.Nifti1Image(fod, sh_fod.affine)
 
-        seeds = tg.seeds.from_fod(fod, np.eye(4), n_seeds, as_array=True, use_opencl=True)
+        seeds = tg.seeds.from_fod(nii, n_seeds, as_array=True, use_opencl=True)
         orientations = seeds[:, 4:7]
 
         expected = self._orientation_second_moment(
@@ -182,8 +181,9 @@ class TestOpenCLFromFOD(unittest.TestCase):
         coefficients = dti_fod.get_fdata()[10, 1, 0]
         fod = np.zeros((1, 1, 1, 6), dtype=np.float32)
         fod[0, 0, 0] = coefficients
+        nii = nib.nifti1.Nifti1Image(fod, dti_fod.affine)
 
-        seeds = tg.seeds.from_fod(fod, np.eye(4), n_seeds, as_array=True, use_opencl=True)
+        seeds = tg.seeds.from_fod(nii, n_seeds, as_array=True, use_opencl=True)
         orientations = seeds[:, 4:7]
 
         expected = self._orientation_second_moment(

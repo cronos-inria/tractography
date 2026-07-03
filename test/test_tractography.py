@@ -37,7 +37,7 @@ class TestTractography(unittest.TestCase):
 
         fod, _, _ = test.data.cross()
         n_seeds = 100  # The number of seeds can be smaller than the batch size.
-        seeds = tg.seeds.from_fod(fod.get_fdata(), fod.affine, n_seeds)
+        seeds = tg.seeds.from_fod(fod, n_seeds)
         streamlines = tg.tractogram(fod, seeds)
         self.assertLessEqual(len(streamlines), n_seeds)
 

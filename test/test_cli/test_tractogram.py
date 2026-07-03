@@ -6,7 +6,7 @@ import numpy as np
 
 import tractography as tg
 import tractography.cli.tractogram
-import test
+import test.data
 
 
 _TEST_RESULTS_DIR = Path(__file__).parents[2] / "test-results" / "cli" / "tractogram"
@@ -29,7 +29,7 @@ class TestTractogram(unittest.TestCase):
         wm_path = _TEST_RESULTS_DIR / "cross-wm.nii.gz"
         nib.save(wm, wm_path)
 
-        seeds = tg.seeds.from_mask(wm.get_fdata(), wm.affine, 1000)
+        seeds = tg.seeds.from_mask(wm, 1000)
         seeds_path = _TEST_RESULTS_DIR / "cross-seeds.txt"
         tg.seeds.save(seeds_path, seeds)
 

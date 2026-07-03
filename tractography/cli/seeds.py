@@ -67,10 +67,8 @@ def from_surface(surface_path: Path, n_seeds: int, seeds_path: Path, **kwargs: d
 
 def from_fod(fod_path: Path, n_seeds: int, seeds_path: Path, **kwargs: dict):
     """Generate seeds from fibre orientation distributions"""
-    nii = nib.load(fod_path)
-    fod = nii.get_fdata()
-    affine = nii.affine
-    seeds = tg.seeds.from_fod(fod, affine, n_seeds, **kwargs)
+    fod = nib.load(fod_path)
+    seeds = tg.seeds.from_fod(fod, n_seeds, **kwargs)
     tg.seeds.save(seeds_path, seeds)
 
 
