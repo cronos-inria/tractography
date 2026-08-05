@@ -193,3 +193,72 @@ class TestInterpolateFieldAtPoints(unittest.TestCase):
                 self.assertTrue(np.all(np.isnan(values)))
             else:
                 np.testing.assert_array_almost_equal(values, point, decimal=5)
+
+
+class TestImageInterpolateFieldAtPoints(unittest.TestCase):
+
+    def test_cube(self):
+
+        # Create a cube with and FOD in the center.
+        image_shape = (3, 3, 3, 5)
+        image_data = np.zeros(image_shape, dtype=np.float32)
+        image_data[1, 1, 1] = np.arange(image_shape[-1], dtype=np.float32)
+
+        mask_data = np.zeros(image_shape[:-1], dtype=np.uint8)
+        mask_data[1, 1, 1] = 1
+
+        # Setup OpenCL context and build the program.
+        program = opencl.build_program(dict(), ["fields/image.cl"])
+
+        # Prepare OpenCL buffers.
+        image_buffer = opencl.new_read_only_buffer(image_data)
+        image_shape_buffer = opencl.new_read_only_buffer(
+            np.array(image_shape, dtype=np.uint32)
+        )
+        image_affine_buffer = opencl.new_read_only_buffer(np.eye(4, dtype=np.float32))
+        mask_buffer = opencl.new_read_only_buffer(mask_data)
+        mask_shape_buffer = opencl.new_read_only_buffer(
+            np.array(np.r_[mask_data.shape, 0], dtype=np.uint32)
+        )
+        mask_affine_buffer = opencl.new_read_only_buffer(np.eye(4, dtype=np.float32))
+
+        # Generate random points within the cube.
+        n_points = 100
+        points = np.random.rand(n_points, 3) * (np.array(image_shape[:-1]) - 1)
+        points_homogeneous = np.c_[points, np.ones(points.shape[0])].astype(np.float32)
+        points_buffer = opencl.new_read_only_buffer(points_homogeneous)
+
+        # 4 bytes per output value, times the number of values per vertex.
+        n_values_per_vertex = image_shape[-1]
+        output_buffer = opencl.new_write_only_buffer(
+            n_points * n_values_per_vertex * 4
+        )
+
+        args = (
+            image_buffer,
+            image_shape_buffer,
+            image_affine_buffer,
+            mask_buffer,
+            mask_shape_buffer,
+            mask_affine_buffer,
+            points_buffer,
+            np.int32(n_points),
+            output_buffer,
+        )
+        program.interpolate_field_at_points(
+            opencl._queue, (n_points,), None, *args)
+        interpolated_values = np.empty(
+            (n_points, n_values_per_vertex), 
+            dtype=np.float32,
+        )
+        opencl.copy_from_buffer(output_buffer, interpolated_values).wait()
+
+        # The interpolated values should match a nearest-neighbor interpolation
+        # of the image data.
+        for point, values in zip(points, interpolated_values):
+            nearest_voxel = np.round(point).astype(int)
+            if mask_data[tuple(nearest_voxel)]:
+                expected_values = image_data[tuple(nearest_voxel)]
+                np.testing.assert_array_almost_equal(values, expected_values, decimal=5)
+            else:
+                self.assertTrue(np.all(np.isnan(values)))
