@@ -44,6 +44,11 @@ class Cache(BaseCache):
     # The affine transform from world to voxel space.
     fod_inverse_affine: cl.Buffer | None = None
 
+    # The mask of the FOD, where streamlines can propagate.
+    mask: cl.Buffer | None = None
+    mask_shape: cl.Buffer | None = None
+    mask_affine: cl.Buffer | None = None
+
 def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     """Generate a streamline histogram
 
@@ -167,6 +172,13 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
         model = LocalModel.from_shape(fod.shape)
         cache.fod = cl.new_read_only_buffer(fod.get_fdata().astype(np.float32))
 
+        # The mask is where the FOD is non-zero.
+        # We will use this to determine where streamlines can propagate.
+        mask = (fod.get_fdata()[..., 0] > 0).astype(np.uint8)
+        cache.mask = cl.new_read_only_buffer(mask)
+        cache.mask_shape = cl.new_read_only_buffer(np.array(mask.shape + (0,), dtype=np.uint32))
+        cache.mask_affine = cl.new_read_only_buffer(iaffine)
+
         # Create the seed buffer on the device. They are stored as two float4.
         seeds_array = np.empty((n_streamlines, 8), dtype=np.float32)
         cache.seeds = cl.new_read_only_buffer(seeds_array)
@@ -206,6 +218,9 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
     args = (
         cache.fod,
         cache.fod_inverse_affine,
+        cache.mask,
+        cache.mask_shape,
+        cache.mask_affine,
         cache.seeds,
         np.float32(config.step_size),
         np.float32(config.save_at),

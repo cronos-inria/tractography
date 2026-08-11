@@ -29,14 +29,14 @@ typedef struct {
  * Converts a point in world coordinates to voxel coordinates using the
  * provided affine transformation.
  */
-inline uint3 world_to_voxel(__global const float4 *affine, float4 point) {
+inline int3 world_to_voxel(__global const float4 *affine, float4 point) {
 	float3 voxel;
     for (size_t i = 0; i < 3; i++) {
         voxel[i] = dot(affine[i], point);
     }
 
     // The voxel center is at 0.0, the voxel goes from -0.5 to 0.5.
-	return (uint3) {round(voxel.x), round(voxel.y), round(voxel.z)};
+	return (int3) {round(voxel.x), round(voxel.y), round(voxel.z)};
 }
 
 /**
@@ -44,13 +44,13 @@ inline uint3 world_to_voxel(__global const float4 *affine, float4 point) {
  * Returns true if the voxel coordinates are inside the image boundaries, false
  * otherwise.
  */
-inline bool voxel_in_image(uint3 voxel, uint3 shape) {
+inline bool voxel_in_image(int3 voxel, uint3 shape) {
 	return !(
-        voxel.x <= 0u || 
+        voxel.x < 0 || 
         voxel.x >= shape.x || 
-        voxel.y <= 0u || 
+        voxel.y < 0 || 
         voxel.y >= shape.y ||
-        voxel.z <= 0u ||
+        voxel.z < 0 ||
         voxel.z >= shape.z
     );
 }
@@ -62,15 +62,16 @@ inline bool voxel_in_image(uint3 voxel, uint3 shape) {
 inline bool is_point_inside_mask(Image image, float4 point) {
 
     // Convert the point from world coordinates to mask voxel coordinates.
-    uint3 mask_voxel = world_to_voxel(image.mask_affine, point);
+    int3 mask_voxel = world_to_voxel(image.mask_affine, point);
     if (!voxel_in_image(mask_voxel, image.mask_shape.xyz)) {
         return false;
     }
     
-    uint index = (int)mask_voxel.x +
-                 (int)mask_voxel.y * image.mask_shape.x +
-                 (int)mask_voxel.z * image.mask_shape.x * image.mask_shape.y;
-    return (image.mask[index] != 0u);
+    int index =
+        mask_voxel.x * image.mask_shape.y * image.mask_shape.z +
+        mask_voxel.y * image.mask_shape.z +
+        mask_voxel.z;
+    return (image.mask[index] != 0);
 }
 
 /**
@@ -92,7 +93,7 @@ bool interpolate_field_at_point(
     }
 
     // Convert the point from world coordinates to image voxel coordinates.
-    uint3 image_voxel = world_to_voxel(image.image_affine, point);
+    int3 image_voxel = world_to_voxel(image.image_affine, point);
     if (!voxel_in_image(image_voxel, image.image_shape.xyz)) {
         for (uint i = 0; i < image.image_shape.w; i++) {
             values_out[i] = nan(0u);
@@ -100,11 +101,14 @@ bool interpolate_field_at_point(
         return false;
     }
     
-    uint index = (int)image_voxel.x +
-                 (int)image_voxel.y * image.image_shape.x +
-                 (int)image_voxel.z * image.image_shape.x * image.image_shape.y;
+    int spatial_index =
+        image_voxel.x * image.image_shape.y * image.image_shape.z +
+        image_voxel.y * image.image_shape.z +
+        image_voxel.z;
+
     for (uint i = 0; i < image.image_shape.w; i++) {
-        values_out[i] = image.values[index * image.image_shape.w + i];
+        values_out[i] =
+            image.values[spatial_index * image.image_shape.w + i];
     }
 
     return true;
@@ -129,7 +133,7 @@ __kernel void interpolate_field_at_points(
     uint gid = get_global_id(0);
     if (gid >= n_points) return;
 
-    // Assemble the mesh structure.
+    // Assemble the image structure.
     Image image = {
         values,
         *image_shape,

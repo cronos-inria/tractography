@@ -25,6 +25,7 @@ dependencies = [
 	"numpy>=2.0",
     "nibabel~=5.3",
     "scipy>=1.15",
+    "scikit-learn>=1.5",
     "pyopencl>=2024",
     "siphash24~=1.7",
     "nimesh@git+https://gitlab.inria.fr/cronos/software/nimesh",
