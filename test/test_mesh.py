@@ -2,32 +2,21 @@ import unittest
 
 import nibabel as nib
 import numpy as np
-import forward
 
 import tractography as tg
 import tractography.algorithms.opencl as opencl
 
 
 def cube(shape: tuple[int, int, int]) -> np.ndarray:
-    """Generate a 3D label volume where each layer along the last axis has a 
-    distinct label.
-
-    Each slice ``image[..., i]`` is filled with the value ``i``, producing
-    a volume with as many unique labels as there are elements along the last
-    axis (excluding 0). The outermost voxels on every face are then set to 0,
-    creating a one-voxel-wide background border.
+    """Generate a binary volume with a one-voxel-wide background border.
 
     Args:
         shape: The (nx, ny, nz) dimensions of the output volume.
 
     Returns:
-        A numpy array of the given *shape* with per-layer labels and a
-        zero-valued border on all faces.
+        A binary array of the given shape.
     """
-    # Generate an image where each layer has a different label.
-    image = np.zeros(shape)
-    for i in range(shape[-1]):
-        image[..., i] = i
+    image = np.ones(shape)
 
     # Remove the border (set all boundary voxels to 0).
     for axis in range(image.ndim):
@@ -50,7 +39,7 @@ class TestFindTetrahedronContainingPoints(unittest.TestCase):
         points = np.random.rand(n_points, 3) * (np.array(shape) - 1)
 
         # Generate the tetrahedral mesh from the cube.
-        mesh = forward.mesh.from_image(image, 0.5)
+        mesh = tg.mesh.from_image(image, 0.5)
 
         # Dummy values for the mesh vertices.
         n_values_per_vertex = 1
@@ -130,7 +119,7 @@ class TestInterpolateFieldAtPoints(unittest.TestCase):
         points = np.random.rand(n_points, 3) * (np.array(shape) - 1)
 
         # Generate the tetrahedral mesh from the cube.
-        mesh = forward.mesh.from_image(image)
+        mesh = tg.mesh.from_image(image)
 
         # Setup OpenCL context and build the program.
         program = opencl.build_program(dict(), ["fields/mesh.cl"])

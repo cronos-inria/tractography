@@ -1,47 +1,78 @@
 import numpy as np
+import pytest
 import trimesh
 from nibabel.nifti1 import Nifti1Image
 
-from tractography.domain import Domain
+import tractography as tg
 
 
-def test_domain_contains_and_boundary_contains():
-    mesh = trimesh.creation.box(extents=[2.0, 2.0, 2.0])
-    domain = Domain(mesh)
+def test_domain_boundary_init():
+    """Test the simple initialization of a domain boundary"""
 
-    assert domain.contains(np.array([[0.0, 0.0, 0.0]]))[0]
-    assert not domain.contains(np.array([[2.0, 0.0, 0.0]]))[0]
-    assert domain.boundary_contains(np.array([[1.0, 0.0, 0.0]]))[0]
-    assert not domain.boundary_contains(np.array([[0.2, 0.2, 0.2]]))[0]
+    # Normal creation.
+    ico = trimesh.creation.icosahedron()
+    domain_boundary = tg.domain.DomainBoundary(ico.vertices, ico.faces)
+    assert isinstance(domain_boundary, tg.domain.DomainBoundary)
+
+    # Must be watertight.
+    vertices = np.array([
+        [0, 0, 0],
+        [0, 0, 1],
+        [0, 1, 0],
+    ])
+    triangles = np.array([
+        [0, 1, 2],
+    ])
+    with pytest.raises(ValueError):
+        tg.domain.DomainBoundary(vertices, triangles)
+
+    # Must be 3D.
+    vertices_4d = np.array([
+        [0, 0, 0, 0],
+        [0, 0, 0, 1],
+        [0, 0, 1, 0],
+        [0, 1, 0, 0],
+    ])
+    with pytest.raises(ValueError):
+        tg.domain.DomainBoundary(vertices_4d, triangles)
+
+    # Must be triangular.
+    tetrahedra = np.array([
+        [0, 1, 2, 3]
+    ])
+    with pytest.raises(ValueError):
+        tg.domain.DomainBoundary(vertices, tetrahedra)
 
 
-def test_domain_to_mask_returns_a_binary_nifti_image():
-    mesh = trimesh.creation.box(extents=[2.0, 2.0, 2.0])
-    domain = Domain(mesh)
+def test_domain_boundary_contains():
+    """Test the __contains__ method."""
 
-    mask = domain.to_mask(shape=(5, 5, 5), affine=np.eye(4))
+    ico = trimesh.creation.icosahedron()
+    domain_boundary = tg.domain.DomainBoundary(ico.vertices, ico.faces)
 
-    assert isinstance(mask, Nifti1Image)
-    assert mask.shape == (5, 5, 5)
-    assert np.any(mask.get_fdata())
+    # Shorthand, can also use .contains.
+    assert ico.vertices[0:1] in domain_boundary
+    weights = [0.1, 0.2, 0.7]
+    point = np.dot(ico.vertices[ico.faces[0]].T, weights)
+    assert point[None, :] in domain_boundary
+    assert not np.r_[0, 0, 2][None, :] in domain_boundary
 
-
-def test_domain_sample_returns_boundary_points():
-    mesh = trimesh.creation.box(extents=[2.0, 2.0, 2.0])
-    domain = Domain(mesh)
-
-    samples = domain.sample(10)
-
-    assert samples.shape == (10, 3)
+    # All points must be on the boundary.
+    assert not np.array([[0, 0, 2], [0, 0, 0]]) in domain_boundary
 
 
-def test_domain_from_image_uses_affine():
-    data = np.ones((1, 1, 1), dtype=np.uint8)
-    affine = np.array(
-        [[1.0, 0.0, 0.0, 10.0], [0.0, 1.0, 0.0, 20.0], [0.0, 0.0, 1.0, 30.0], [0.0, 0.0, 0.0, 1.0]]
-    )
-    image = Nifti1Image(data, affine)
+def test_domain_from_image():
+    """Test the creation of a domain from an image."""
 
-    domain = Domain.from_image(image)
+    # A simple box.
+    image_data = np.zeros((10, 10, 10))
+    image_data[1:10, 1:10, 1:10] = 1
+    image = Nifti1Image(image_data, np.eye(4))
+    domain = tg.domain.from_image(image)
+    assert isinstance(domain, tg.domain.Domain)
 
-    assert domain.contains(np.array([[10.0, 20.0, 30.0]]))[0]
+    # The bounding box of the mesh should more or less match the initial box.
+    high = np.max(domain.vertices, axis=0)
+    assert np.all(np.isclose(high, 9.5, 2))
+    low = np.min(domain.vertices, axis=0)
+    assert np.all(np.isclose(low, -0.5, 2))
