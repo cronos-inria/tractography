@@ -1,3 +1,5 @@
+from collections.abc import Container
+
 import numpy as np
 from nibabel.nifti1 import Nifti1Image
 from scipy import ndimage
@@ -16,9 +18,9 @@ def multiply(
     Args:
         left: The reference image. Defines the output spatial grid and affine.
         right: The image to resample and multiply against the left image.
-        order: The order of the spline interpolation, default is 0.
-            Use 0 (nearest-neighbor) for masks/labels to preserve integer values.
-            Use 1 (linear) or higher for continuous anatomical data.
+        order: The order of the spline interpolation, default is 0. Use 0
+            (nearest-neighbor) for masks/labels to preserve integer values. Use
+            1 (linear) or higher for continuous anatomical data.
 
     Returns:
         A new NIfTI image containing the product of the inputs in the `left`
@@ -52,6 +54,78 @@ def multiply(
     new_header.set_data_dtype(product.dtype)
 
     return Nifti1Image(product, left.affine, header=new_header)
+
+
+def subtract(
+    left: Nifti1Image,
+    right: Nifti1Image,
+    order: int = 0,
+) -> Nifti1Image:
+    """Subtracts two NIfTI images in world space
+
+    The `right` image is resampled to the geometry (affine and shape) of the
+    `left` image prior to subtraction.
+
+    Args:
+        left: The left operand. Defines the output spatial grid and affine.
+        right: The image to resample and subtract from the left image.
+        order: The order of the spline interpolation, default is 0. Use 0
+            (nearest-neighbor) for masks/labels to preserve integer values. Use
+            1 (linear) or higher for continuous anatomical data.
+
+    Returns:
+        A new NIfTI image that is the subtraction of the two inputs. Its data
+        type of the resulting image matches numpy type promotion.
+    """
+
+    # Calculate the mapping from 'left' voxels to 'right' voxels.
+    affine = np.dot(np.linalg.inv(right.affine), left.affine)
+
+    # Resample the right image data to match the left image grid.
+    right_resampled = ndimage.affine_transform(
+        input=right.get_fdata(),
+        matrix=affine,
+        output_shape=left.shape[:right.ndim],
+        order=order,
+        mode='constant',
+        cval=0.0,
+    ).reshape(left.shape[:right.ndim] + (1,) * (left.ndim - right.ndim))
+
+    # Subtract the data.
+    result = left.get_fdata() - right_resampled
+
+    # Create a copy of the header to preserve voxel dimensions and units.
+    # Update the header to match the new data type.
+    new_header = left.header.copy()
+    new_header.set_data_dtype(result.dtype)
+
+    return Nifti1Image(result, left.affine, header=new_header)
+
+
+def extract(
+    nii: Nifti1Image,
+    labels: Container,
+) -> Nifti1Image:
+    """Create bitwise image by selecting labels
+
+    Args:
+        nii: The label image.
+        labels: A container of label to extract.
+
+    Returns:
+        A new NIfTI image containing 1 for voxels whose labels are in the
+        provided labels, 0 otherwise.
+    """
+
+    # Create the binary mask.
+    mask_data = (np.isin(nii.get_fdata(), labels)).astype(np.uint8)
+
+    # Preserve the original header to keep voxel sizes and orientation details.
+    # Update the header to reflect the new data type (uint8).
+    new_header = nii.header.copy()
+    new_header.set_data_dtype(np.uint8)
+
+    return Nifti1Image(mask_data, nii.affine, header=new_header)
 
 
 def threshold(
