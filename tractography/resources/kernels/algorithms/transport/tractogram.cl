@@ -2,10 +2,15 @@
 #define __TRANSPORT_TRACTOGRAM__
 
 #include "utils/core.cl"
-#define $model
+
+// Select the model used based on preprocessor directives. All models provide
+// their own evaluate_interpolated_model function.
 #include "models/select.cl"
 #include "algorithms/diffusion/core.cl"
-#include "fields/image.cl"
+
+// Select the type of field to use based on preprocessor directives. All fields
+// provide their own interpolate_field_at_point function.
+#include "fields/select.cl"
 
 __kernel void tractogram(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],

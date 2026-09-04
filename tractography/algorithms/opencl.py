@@ -34,7 +34,7 @@ def new_buffer(data):
     return buffer
 
 
-def build_program(values, names) -> Program:
+def build_program(values, names, options=None) -> Program:
 
     if isinstance(names, str):
         names = [names]
@@ -47,11 +47,14 @@ def build_program(values, names) -> Program:
 
         template = Template(kernel)
 
+        # Add user options if there are any.
+        compiler_options = [f"-I {opencl_dir}", "-cl-std=CL3.0"]
+        if options is not None:
+            compiler_options += options
+
         # Set constants in the OpenCL code.
         source = template.safe_substitute(values)
-        return cl.Program(_context, source).build(
-            options=[f"-I {opencl_dir}", "-cl-std=CL3.0"]
-        )
+        return cl.Program(_context, source).build(options=compiler_options)
 
 
 def new_write_only_buffer(size):

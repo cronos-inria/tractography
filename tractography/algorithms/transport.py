@@ -117,7 +117,12 @@ def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
     return hist
 
 
-def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache: Cache | None = None) -> Tuple[Tractogram, Cache]:
+def tractogram(
+    fod: Nifti1Image,
+    seeds: list[Seed],
+    config: Configuration,
+    cache: Cache | None = None
+) -> Tuple[Tractogram, Cache]:
     """Generate streamlines using transport tracking.
 
     Args:
@@ -193,7 +198,6 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
 
         # Set constants in the OpenCL code and build the program.
         values = {
-            "model": str(model),
             "nx": fod.shape[0],
             "ny": fod.shape[1],
             "nz": fod.shape[2],
@@ -201,7 +205,13 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
             "n_steps": config.n_steps,
             "n_streamlines": n_streamlines,
         }
-        cache.program = cl.build_program(values, "algorithms/transport/tractogram.cl")
+
+        # The model and the field type will determine the correct OpenCL
+        # implementation at compile time.
+        cache.program = cl.build_program(
+            values,
+            "algorithms/transport/tractogram.cl",
+            options=[f"-D {str(model)}", "-D FIELD_IMAGE"])
 
     # Type narrowing.
     assert cache is not None
