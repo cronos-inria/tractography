@@ -178,7 +178,7 @@ def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache
 
         # Add the random number states.
         randoms_array = np.random.randint(4294967295, size=(n_streamlines, 2)).astype(np.uint32)
-        cache.randoms = cl.new_read_only_buffer(randoms_array)
+        cache.randoms = cl.new_buffer(randoms_array)
 
         # Create the seed buffer on the device. They are stored as two float4.
         seeds_array = np.empty((n_streamlines, 8), dtype=np.float32)
