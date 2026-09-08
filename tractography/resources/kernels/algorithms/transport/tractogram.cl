@@ -12,6 +12,104 @@
 // provide their own interpolate_field_at_point function.
 #include "fields/select.cl"
 
+void track_streamline(
+		Field field,
+		float4 location,
+		float4 orientation,
+		float dt,
+		float save_at,
+		float gamma,
+        __global float4 streamlines[$n_steps],
+        __global uint* length)
+{
+
+	// Initialize the first streamline location and orientation with the
+	// provided location and orientation.
+	streamlines[0] = location;
+	size_t n = 1;
+	float time = 0.0f;
+	while (n < $n_steps) {
+
+		// Evaluate the model at the current particle location. Stop if the 
+		// particle is not in the domain.
+		float interpolated_model[45];
+		if (!interpolate_field_at_point(field, location, interpolated_model))
+			break;
+		model_value_t evaluated_model = evaluate_interpolated_model(
+			interpolated_model,
+			$n_coefficients,
+			orientation
+		);
+
+		// Update the orientation.
+		orientation = update_orientation(
+			evaluated_model, 
+			orientation, 
+			0, 
+			dt, 
+			gamma, 
+			0.0f
+		);
+
+		// Move the location forward and add it to the streamline.
+		location = mad(dt, orientation, location);
+		
+		// Move time forward and record the location if necessary.
+		time += dt;
+		if (time >= save_at) {
+			time -= save_at;
+			streamlines[n] = mad(-time, orientation, location);
+			n++;
+		}
+
+	}
+	*length = n;
+}
+
+// Define a thin wrapper which depends on the field type.
+#if defined(FIELD_TETRAHEDRAL_MESH)
+
+__kernel void tractogram(
+     __global const float4 *vertices,
+     __global const int4 *tetrahedra,
+     __global const float *values,
+     int n_values_per_vertex,
+     int n_vertices,
+     int n_tetrahedra,
+	__global const float4 seeds[$n_streamlines][2],
+	float dt,
+	float save_at,
+	float gamma,
+	__global float4 streamlines[$n_streamlines][$n_steps],
+	__global uint lengths[$n_streamlines])
+{
+    uint gid = get_global_id(0);
+	if (gid >= $n_streamlines) return;
+
+	// Assemble the field structure.
+    Field field = {
+        vertices,
+		tetrahedra,
+		values,
+		n_values_per_vertex,
+		n_vertices,
+		n_tetrahedra,
+    };
+
+	track_streamline(
+		field,
+		seeds[gid][0],
+		seeds[gid][1],
+		dt,
+		save_at,
+		gamma,
+		streamlines[gid],
+		lengths + gid
+	);
+}
+
+#elif defined(FIELD_IMAGE)
+
 __kernel void tractogram(
         __global const float fod[$nx][$ny][$nz][$n_coefficients],
         __global const float4 affine[4],
@@ -28,8 +126,8 @@ __kernel void tractogram(
     uint gid = get_global_id(0);
 	if (gid >= $n_streamlines) return;
 
-	// Assemble the image structure.
-    Image field = {
+	// Assemble the field structure.
+    Field field = {
         fod,
         {$nx, $ny, $nz, $n_coefficients},
         affine,
@@ -38,61 +136,18 @@ __kernel void tractogram(
         mask_affine
     };
 
-	uint4 dims = {$nx, $ny, $nz, $n_coefficients};
-
-	float4 iaffine[4] = {affine[0], affine[1], affine[2], affine[3]};
-
-	// Initialize the first streamline point and orientation with the seed.
-	float4 point = seeds[gid][0];
-	float4 orientation = seeds[gid][1];
-
-	streamlines[gid][0] = point;
-	size_t n = 1;
-	float time = 0.0f;
-	while (n < $n_steps) {
-
-		// Go back to voxel space.
-		float3 voxel = to_voxel(iaffine, point);
-		if (!in_image(voxel, $nx, $ny, $nz)) {
-			break;
-		}
-		uint3 index = to_index(voxel);
-
-		// Check if we still have an fODF.
-        if (fod[index.x][index.y][index.z][0] <= 0.0f) {
-			break;
-        }
-
-		// Update the orientation.
-		float interpolated_model[45];
-		interpolate_field_at_point(field, point, interpolated_model);
-		model_value_t evaluated_model = evaluate_interpolated_model(
-			interpolated_model,
-			dims.w,
-			orientation
-		);
-		orientation = update_orientation(
-			evaluated_model, 
-			orientation, 
-			0, 
-			dt, 
-			gamma, 
-			0.0f
-		);
-
-		// Move the point forward and add it to the streamline.
-		point = mad(dt, orientation, point);
-		
-		// Move time forward and record the point if necessary.
-		time += dt;
-		if (time >= save_at) {
-			time -= save_at;
-			streamlines[gid][n] = mad(-time, orientation, point);
-			n++;
-		}
-
-	}
-	lengths[gid] = n;
+	// Each thread tracks one streamline.
+	track_streamline(
+		field,
+		seeds[gid][0],
+		seeds[gid][1],
+		dt,
+		save_at,
+		gamma,
+		streamlines[gid],
+		lengths + gid
+	);
 }
 
+#endif
 #endif

@@ -4,9 +4,9 @@
 #define MAX_N_VALUES_PER_VERTEX 16
 
 /**
- * IMAGE
- * This kernel implements an image field, which is a field defined on a
- * regular grid. The values of the image are only valid within a specified
+ * FIELD - (IMAGE)
+ * This kernel implements an field using image data, which is a field defined
+ * on a regular grid. The values of the image are only valid within a specified
  * mask and withing the image boundary. The image and the mask do not need to
  * be sampled on the same grid.
  * 
@@ -17,12 +17,12 @@
 
 typedef struct {
      __global const float *values;
-     uint4 image_shape;
+     uint4 values_shape;
     __global const float4 *image_affine; // From voxel coordinates to world coordinates!
     __global const uchar *mask;
      uint4 mask_shape;
     __global const float4 *mask_affine; // From world coordinates to voxel coordinates!
-} Image;
+} Field;
 
 /**
  * WORLD_TO_VOXEL
@@ -59,7 +59,7 @@ inline bool voxel_in_image(int3 voxel, uint3 shape) {
  * IS_POINT_INSIDE_MASK
  * Returns true if the point is inside the mask, false otherwise.
  */
-inline bool is_point_inside_mask(Image image, float4 point) {
+inline bool is_point_inside_mask(Field image, float4 point) {
 
     // Convert the point from world coordinates to mask voxel coordinates.
     int3 mask_voxel = world_to_voxel(image.mask_affine, point);
@@ -81,12 +81,12 @@ inline bool is_point_inside_mask(Image image, float4 point) {
  * otherwise.
  */
 bool interpolate_field_at_point(
-        Image image,
+        Field image,
         float4 point,
         float* values_out) {
 
     if (!is_point_inside_mask(image, point)) {
-        for (uint i = 0; i < image.image_shape.w; i++) {
+        for (uint i = 0; i < image.values_shape.w; i++) {
             values_out[i] = nan(0u);
         }
         return false;
@@ -94,21 +94,21 @@ bool interpolate_field_at_point(
 
     // Convert the point from world coordinates to image voxel coordinates.
     int3 image_voxel = world_to_voxel(image.image_affine, point);
-    if (!voxel_in_image(image_voxel, image.image_shape.xyz)) {
-        for (uint i = 0; i < image.image_shape.w; i++) {
+    if (!voxel_in_image(image_voxel, image.values_shape.xyz)) {
+        for (uint i = 0; i < image.values_shape.w; i++) {
             values_out[i] = nan(0u);
         }
         return false;
     }
     
     int spatial_index =
-        image_voxel.x * image.image_shape.y * image.image_shape.z +
-        image_voxel.y * image.image_shape.z +
+        image_voxel.x * image.values_shape.y * image.values_shape.z +
+        image_voxel.y * image.values_shape.z +
         image_voxel.z;
 
-    for (uint i = 0; i < image.image_shape.w; i++) {
+    for (uint i = 0; i < image.values_shape.w; i++) {
         values_out[i] =
-            image.values[spatial_index * image.image_shape.w + i];
+            image.values[spatial_index * image.values_shape.w + i];
     }
 
     return true;
@@ -121,7 +121,7 @@ bool interpolate_field_at_point(
  */
 __kernel void interpolate_field_at_points(
         __global const float *values,
-        __global const uint4 *image_shape,
+        __global const uint4 *values_shape,
         __global const float4 image_affine[4],
         __global const uchar *mask,
         __global const uint4 *mask_shape,
@@ -134,9 +134,9 @@ __kernel void interpolate_field_at_points(
     if (gid >= n_points) return;
 
     // Assemble the image structure.
-    Image image = {
+    Field image = {
         values,
-        *image_shape,
+        *values_shape,
         image_affine,
         mask,
         *mask_shape,
@@ -146,8 +146,8 @@ __kernel void interpolate_field_at_points(
     // Interpolate the field values at the point.
     float local_values_out[MAX_N_VALUES_PER_VERTEX];
     interpolate_field_at_point(image, points[gid], local_values_out);
-    for (int i = 0; i < image.image_shape.w; i++) {
-        values_out[gid * image.image_shape.w + i] = local_values_out[i];
+    for (int i = 0; i < image.values_shape.w; i++) {
+        values_out[gid * image.values_shape.w + i] = local_values_out[i];
     }
 }
 

@@ -26,19 +26,20 @@ class Configuration(BaseConfiguration):
     @classmethod
     def load(cls):
         return super().load(Algorithm.TRANSPORT)
-    
+
 
 @dataclass
 class Cache(BaseCache):
     """Cache for the OpenCL setup of the transport algorithm.
-    
+
     This cache is used to store the OpenCL buffers and program, so that they can
     be reused across multiple tractography runs without needing to reallocate
     memory or rebuild the program.
 
     """
 
-    # The model parameters modelling the local FOD (e.g. spherical harmonics coefficients).
+    # The model parameters modelling the local FOD (e.g. spherical harmonics
+    # coefficients).
     fod: cl.Buffer | None = None
 
     # The affine transform from world to voxel space.
