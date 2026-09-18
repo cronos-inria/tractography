@@ -6,6 +6,25 @@ from nibabel.nifti1 import Nifti1Image
 import tractography as tg
 
 
+def test_image_domain_boundary_init():
+    """Test the initialization of an image domain"""
+
+    # A simple box.
+    image_data = np.zeros((10, 10, 10))
+    image_data[1:10, 1:10, 1:10] = 1
+    affine = np.eye(4)
+    affine[:3, 3] = [5, 6, 7]
+    image = Nifti1Image(image_data, affine)
+    domain = tg.domain.ImageDomain(image)
+    assert isinstance(domain, tg.domain.ImageDomain)
+
+    # The bounding box of the mesh should more or less match the initial box.
+    high = np.max(domain.boundary.vertices, axis=0)
+    assert np.all(np.isclose(high, [14.5, 15.5, 16.5], atol=1e-2))
+    low = np.min(domain.boundary.vertices, axis=0)
+    assert np.all(np.isclose(low, [5.5, 6.5, 7.5], atol=1e-2))
+
+
 def test_domain_boundary_init():
     """Test the simple initialization of a domain boundary"""
 
@@ -61,18 +80,18 @@ def test_domain_boundary_contains():
     assert not np.array([[0, 0, 2], [0, 0, 0]]) in domain_boundary
 
 
-def test_domain_from_image():
-    """Test the creation of a domain from an image."""
+def test_domain_tetrahedral():
+    """Test the creation of a tetrahedral domain from an image."""
 
     # A simple box.
     image_data = np.zeros((10, 10, 10))
     image_data[1:10, 1:10, 1:10] = 1
     image = Nifti1Image(image_data, np.eye(4))
-    domain = tg.domain.from_image(image)
+    domain = tg.domain.tetrahedral(image, tetrahedra_size=0.1)
     assert isinstance(domain, tg.domain.Domain)
 
     # The bounding box of the mesh should more or less match the initial box.
     high = np.max(domain.vertices, axis=0)
-    assert np.all(np.isclose(high, 9.5, 2))
+    assert np.all(np.isclose(high, 9.5, atol=1e-2))
     low = np.min(domain.vertices, axis=0)
-    assert np.all(np.isclose(low, -0.5, 2))
+    assert np.all(np.isclose(low, 0.5, atol=1e-2))

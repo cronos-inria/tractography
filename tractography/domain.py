@@ -5,9 +5,9 @@ from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
+import trimesh
 from nibabel.affines import apply_affine
 from nibabel.nifti1 import Nifti1Image
-
 from trimesh import Trimesh
 
 from . import _mesh
@@ -62,7 +62,41 @@ class DomainBoundary(Trimesh):
 
 
 class Domain:
-    """A phase space domain for tractography.
+    """A generic phase space domain"""
+
+    def __init__(self, boundary: DomainBoundary):
+        self.boundary = boundary
+
+
+class ImageDomain(Domain):
+    """A phase space domain for tractography represented by a binary image.
+
+    The domain is presented by a binary image that contains 0 if a voxel is
+    outside of the domain and 1 otherwise. The angular part of the domain
+    does not need to be specified, as all vectors in S2 are part of the domain.
+
+    Args:
+        image: A Nifti1Image that defines the domain. Voxels with a value of 0
+            are outside of the domain and voxels with any other value are
+            inside the domain.
+    """
+
+    def __init__(
+        self,
+        image: Nifti1Image,
+    ) -> None:
+
+        self.image = image
+
+        # The boundary of the domain is identified using marching cubes.
+        data = image.get_fdata() != 0
+        boundary = trimesh.voxel.ops.matrix_to_marching_cubes(data)
+        vertices = apply_affine(image.affine, boundary.vertices)
+        super().__init__(DomainBoundary(vertices, boundary.faces))
+
+
+class TetrahedralDomain(Domain):
+    """A phase space domain for tractography represented by a tetrahedral mesh.
 
     The domain is represented by a tetrahedral volume. The angular part of the
     domain does not need to be specified, as all vector in S2 are part of the
@@ -112,15 +146,14 @@ class Domain:
             tuple(sorted(t)) for a in tetrahedra for t in combinations(a, 3)
         ]
         boundary_tri = [k for k, v in Counter(triangles).items() if v == 1]
-        boundary = DomainBoundary(vertices, np.array(boundary_tri))
-        self.boundary = boundary
+        super().__init__(DomainBoundary(vertices, np.array(boundary_tri)))
 
 
-def from_image(
+def tetrahedral(
     image: Nifti1Image,
     tetrahedra_size: float = 1.0,
     distance: float = 1.0,
-) -> Domain:
+) -> TetrahedralDomain:
     """Generate a tetrahedral mesh from a 3D NIfTI image.
 
     Every nonzero voxel belongs to one domain. Integer voxel indices are
@@ -161,4 +194,4 @@ def from_image(
     )
 
     world_vertices = apply_affine(axis_physical_to_world, native_vertices)
-    return Domain(world_vertices, native_tetrahedra)
+    return TetrahedralDomain(world_vertices, native_tetrahedra)
