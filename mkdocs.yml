@@ -20,6 +20,8 @@ nav:
       - Overview: user-guide/user_guide.md
       - Domains: user-guide/domains.md
       - Image Domains: user-guide/image-domains.md
+      - Fields: user-guide/fields.md
+      - Image Fields: user-guide/image-fields.md
     - About: 
         - about/release-notes.md
         - about/contributing.md
