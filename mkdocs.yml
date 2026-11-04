@@ -16,7 +16,10 @@ theme:
 nav:
     - Home: index.md
     - Getting Started: getting_started.md
-    - User Guide: user-guide/user_guide.md
+    - User Guide:
+      - Overview: user-guide/user_guide.md
+      - Domains: user-guide/domains.md
+      - Image Domains: user-guide/image-domains.md
     - About: 
         - about/release-notes.md
         - about/contributing.md
