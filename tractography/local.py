@@ -9,7 +9,7 @@ import pyopencl.cltypes as clt
 
 from .core import ishtmtx, cart2sph
 
-type Orientations = np.ndarray[tuple[int, int], np.dtype[clt.float]]
+type Orientations = np.ndarray[tuple[int, int], Any]
 type LocalModelValues = np.ndarray[tuple[int, int], np.dtype[clt.float]]
 
 _OPENCL_DIR = files("tractography.resources") / "kernels"
@@ -56,7 +56,9 @@ class BaseLocalModel(ABC):
         """Evaluate the local model at the given orientations.
 
         Args:
-            parameters: Real symmetric spherical-harmonic coefficients.
+            parameters: Real symmetric spherical-harmonic coefficients with
+                one row per orientation and shape
+                (n_orientations, n_parameters).
             orientations: Array of shape (n_orientations, 3) containning the
                 xyz coordinates of the orientations.
             
@@ -124,7 +126,9 @@ class RealSymmetricSphericalHarmonics(BaseLocalModel):
         ``evaluate`` function for OpenCL execution.
 
         Args:
-            parameters: Real symmetric spherical-harmonic coefficients.
+            parameters: Real symmetric spherical-harmonic coefficients with
+                one row per orientation and shape
+                (n_orientations, n_parameters).
             orientations: Array of shape (n_orientations, 3) containing the
             xyz coordinates of the orientations.
 
@@ -133,7 +137,7 @@ class RealSymmetricSphericalHarmonics(BaseLocalModel):
             theta derivative, and phi derivative divided by ``sin(theta)``.
         """
 
-        # Stop early on empty points array.
+        # Stop early on empty orientations.
         if orientations.shape[0] == 0:
             return np.empty((0, 3), dtype=clt.float)
         
@@ -145,13 +149,13 @@ class RealSymmetricSphericalHarmonics(BaseLocalModel):
 
         phi, theta, _ = cart2sph(*orientations.T)
         mtx, mtx_derivatives = ishtmtx(phi, theta, self.n_parameters)
-        value = mtx @ parameters
+        value = np.einsum("ij,ij->i", mtx, parameters)
         d = dsoftmax(value, SOFTMAX_SCALE)
 
         value = softmax(value, SOFTMAX_SCALE)
 
         # The derivative with respect to phi needs to be divided by sin(theta).
-        dphi_numerator = mtx_derivatives[1] @ parameters
+        dphi_numerator = np.einsum("ij,ij->i", mtx_derivatives[1], parameters)
         sin_theta = np.sin(theta)
         at_pole = np.isclose(sin_theta, 0.0, atol=1e-7, rtol=0.0)
         dphi = np.divide(
@@ -160,7 +164,7 @@ class RealSymmetricSphericalHarmonics(BaseLocalModel):
             out=np.zeros_like(dphi_numerator),
             where=~at_pole,
         )
-        dtheta = mtx_derivatives[0] @ parameters
+        dtheta = np.einsum("ij,ij->i", mtx_derivatives[0], parameters)
         if np.any(at_pole):
             
             # Evaluate the finite pole limits from inside the valid polar
@@ -170,8 +174,13 @@ class RealSymmetricSphericalHarmonics(BaseLocalModel):
             _, pole_derivatives = ishtmtx(
                 phi[at_pole], pole_theta, self.n_parameters
             )
-            dtheta[at_pole] = pole_derivatives[0] @ parameters
-            dphi[at_pole] = (pole_derivatives[1] @ parameters) / np.sin(pole_theta)
+            pole_parameters = parameters[at_pole]
+            dtheta[at_pole] = np.einsum(
+                "ij,ij->i", pole_derivatives[0], pole_parameters
+            )
+            dphi[at_pole] = np.einsum(
+                "ij,ij->i", pole_derivatives[1], pole_parameters
+            ) / np.sin(pole_theta)
         return np.stack([value, dtheta * d, dphi * d], axis=-1)
 
 
@@ -184,7 +193,8 @@ def evaluate(
 
     Args:
         model: Local model providing the OpenCL implementation.
-        parameters: Model coefficients.
+        parameters: Model coefficients with one row per orientation and shape
+                (n_orientations, n_parameters).
         orientations: Array of shape (n_orientations, 3) containing the
                       xyz coordinates of the orientations.
 
@@ -195,7 +205,7 @@ def evaluate(
         returns an empty array of shape ``(0, 3)``.
     """
 
-    # Stop early on empty points array.
+    # Stop early on empty orientations.
     n_orientations = orientations.shape[0]
     if n_orientations == 0:
         return np.empty((0, 3), dtype=clt.float)
@@ -217,7 +227,7 @@ def evaluate(
 
         float tmp[$N_PARAMETERS];
         for (int i = 0; i < $N_PARAMETERS; ++i) {
-            tmp[i] = model[i];
+            tmp[i] = model[gid * $N_PARAMETERS + i];
         }
         ModelValue mv = local_model_evaluate(tmp, orientations[gid]);
         results[gid * 3 + 0] = mv.value;

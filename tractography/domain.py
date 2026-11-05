@@ -7,12 +7,11 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.cltypes as clt
 
+type Points = np.ndarray[tuple[int, int], Any]
+type ContainsResult = np.ndarray[tuple[int], np.dtype[np.bool_]]
 
 READ_ONLY = cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR
 WRITE_ONLY = cl.mem_flags.WRITE_ONLY
-
-type Points = np.ndarray[tuple[int, int], Any]
-type ContainsResult = np.ndarray[tuple[int], np.dtype[np.bool_]]
 
 
 class BaseDomain(ABC):
@@ -113,7 +112,7 @@ class Image(BaseDomain):
                 dot(d.domain_inverse_affine[1], pos_h),
                 dot(d.domain_inverse_affine[2], pos_h),
                 1.0f);
-            int3 voxel = convert_int3(round(voxel_h.xyz));
+            int3 voxel = convert_int3(rint(voxel_h.xyz));
 
             // Check if the voxel coordinates are within the image bounds.
             if (voxel.x < 0 || voxel.x >= d.dims.x ||
@@ -124,7 +123,7 @@ class Image(BaseDomain):
 
             // Any non-zero value in the mask indicates the voxel is within the
             // domain.
-            int idx = voxel.x * (d.dims.y * d.dims.z) + voxel.y * d.dims.z + voxel.z;
+            size_t idx = voxel.x * (d.dims.y * d.dims.z) + voxel.y * d.dims.z + voxel.z;
             return d.mask[idx] != 0;
         }
         """
@@ -186,6 +185,11 @@ def contains(domain: BaseDomain, points: Points) -> ContainsResult:
         Boolean array indicating whether each point is inside the domain.
     """
 
+    # Stop early on empty points array.
+    n_points = points.shape[0]
+    if n_points == 0:
+        return np.array([], dtype=np.bool_)
+
     # Create the global OpenCL context.
     _context = cl.create_some_context(interactive=False)
     _queue = cl.CommandQueue(_context)
@@ -202,14 +206,9 @@ def contains(domain: BaseDomain, points: Points) -> ContainsResult:
 	    if (gid >= n_points) return;
 
         DOMAIN_BUILD(d)
-        results[gid] = domain_contains(d, points[get_global_id(0)].xyz);
+        results[gid] = domain_contains(d, points[gid].xyz);
     }
     """
-
-    # Stop early on empty points array.
-    n_points = points.shape[0]
-    if n_points == 0:
-        return np.array([], dtype=np.bool_)
     
     # Points are stored in a (n_points, 4) array with the last component set
     # to 0 to match the OpenCL float4 format.
