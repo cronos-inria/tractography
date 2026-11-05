@@ -28,6 +28,24 @@ class TestRemoveDuplicateEndpoints(unittest.TestCase):
             np.testing.assert_array_equal(a, b)
 
 
+class TestCartesianSphericalConversion(unittest.TestCase):
+    def test_cart2sph_normalizes_and_handles_origin(self):
+        points = np.array(
+            [
+                [2.0, 0.0, 0.0],
+                [0.0, -3.0, 0.0],
+                [0.0, 0.0, -4.0],
+                [0.0, 0.0, 0.0],
+            ]
+        )
+
+        azimuth, colatitude, radius = tg.core.cart2sph(*points.T)
+
+        np.testing.assert_allclose(azimuth, [0.0, 1.5 * np.pi, 0.0, 0.0])
+        np.testing.assert_allclose(colatitude, [0.5 * np.pi, 0.5 * np.pi, np.pi, 0.0])
+        np.testing.assert_allclose(radius, [2.0, 3.0, 4.0, 0.0])
+
+
 class TestISHTMTX(unittest.TestCase):
     def test_simple(self):
         """Test the simplest use-case"""

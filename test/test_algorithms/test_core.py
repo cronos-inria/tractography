@@ -22,11 +22,16 @@ class TestCore(unittest.TestCase):
 
         azimuths = np.linspace(0, 2 * np.pi - 2 * np.pi / 1000, 1000).astype(np.float32)
         colatitudes = np.linspace(0, np.pi - np.pi / 1000, 1000).astype(np.float32)
-        ex, ey, ez = zip(
-            *[tg.core.sph2cart(a, c, 1) for a, c in zip(azimuths, colatitudes)]
-        )
+        radii = np.linspace(0.25, 2.0, len(azimuths), dtype=np.float32)
+        ex, ey, ez = tg.core.sph2cart(azimuths, colatitudes, radii)
         cart = np.c_[ex, ey, ez, np.zeros_like(ex)].astype(np.float32)
         sph = np.c_[azimuths, colatitudes].astype(np.float32)
+        cart = np.concatenate(
+            (cart, np.array([[0, 0, -2, 0], [0, 0, 0, 0]], dtype=np.float32))
+        )
+        sph = np.concatenate(
+            (sph, np.array([[0, np.pi], [0, 0]], dtype=np.float32))
+        )
 
         # Create the global OpenCL context.
         _context = tg.algorithms.opencl._context
