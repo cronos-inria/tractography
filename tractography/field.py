@@ -19,6 +19,9 @@ WRITE_ONLY = cl.mem_flags.WRITE_ONLY
 class BaseField(ABC):
     """Abstract interface for a field of local model parameters."""
 
+    def __init__(self, n_parameters: int):
+        self.n_parameters = n_parameters
+
     @abstractmethod
     def get_source(self) -> str:
         """Return OpenCL source defining the field.
@@ -56,7 +59,8 @@ class Image(BaseField):
         
         if image_data.ndim != 4:
             raise ValueError("Only 4D images are supported for image fields.")
-        
+        super().__init__(image_data.shape[3])
+
         self.values = np.ascontiguousarray(
             image_data.get_fdata(), 
             dtype=clt.float,
@@ -137,12 +141,12 @@ class Image(BaseField):
         return result
 
 
-def evaluate(field: Image, points: Points) -> FieldValues:
+def evaluate(field: BaseField, points: Points) -> FieldValues:
 
     # Stop early on empty points array.
     n_points = points.shape[0]
     if n_points == 0:
-        return np.empty((0, field.dims[-1]), dtype=clt.float)
+        return np.empty((0, field.n_parameters), dtype=clt.float)
 
     # Create the global OpenCL context.
     _context = cl.create_some_context(interactive=False)
@@ -162,11 +166,11 @@ def evaluate(field: Image, points: Points) -> FieldValues:
         FIELD_BUILD(f)
         float tmp[$N_PARAMETERS];
         field_evaluate(f, points[gid].xyz, tmp);
-        for (int i = 0; i < f.dims.w; ++i) {
-            results[gid * f.dims.w + i] = tmp[i];
+        for (int i = 0; i < $N_PARAMETERS; ++i) {
+            results[gid * $N_PARAMETERS + i] = tmp[i];
         }
     }
-    """).safe_substitute({"N_PARAMETERS": field.dims[-1]})
+    """).safe_substitute({"N_PARAMETERS": field.n_parameters})
 
     # Points are stored in a (n_points, 4) array with the last component set
     # to 0 to match the OpenCL float4 format.
@@ -175,7 +179,7 @@ def evaluate(field: Image, points: Points) -> FieldValues:
     points_buffer = cl.Buffer(_context, READ_ONLY, hostbuf=points_data)
 
     # Prepare the results buffer.
-    result = np.empty((n_points, field.dims[-1]), dtype=clt.float)
+    result = np.empty((n_points, field.n_parameters), dtype=clt.float)
     results_buffer = cl.Buffer(_context, WRITE_ONLY, size=result.nbytes)
     args = field.get_args(_context) + [
         points_buffer,
