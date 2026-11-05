@@ -123,9 +123,15 @@ inline float4 sph2cart(float azimuth, float colatitude) {
 }
 
 inline float2 cart2sph(float4 cart) {
-	float azimuth = atan2(cart.y, cart.x);
-	float colatitude = acos(cart.z);
-	wrap(&azimuth, &colatitude);
+    float radius = length(cart.xyz);
+    if (radius <= 0.0f) {
+        return (float2) (0.0f, 0.0f);
+    }
+    float azimuth = atan2(cart.y, cart.x);
+    if (azimuth < 0.0f) {
+        azimuth += 2.0f * PI;
+    }
+    float colatitude = acos(clamp(cart.z / radius, -1.0f, 1.0f));
     return (float2) (azimuth, colatitude);
 }
 

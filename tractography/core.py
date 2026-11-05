@@ -5,10 +5,25 @@ import scipy
 
 
 def cart2sph(x, y, z):
+    """Convert Cartesian coordinates to spherical coordinates.
+
+    Azimuth is in ``[0, 2π)`` and colatitude is in ``[0, π]``. At the
+    origin, where both angles are undefined, this function returns zero for
+    both angles and zero for the radius.
+    """
+    x, y, z = np.broadcast_arrays(x, y, z)
     radius = np.sqrt(x**2 + y**2 + z**2)
-    azimuth = np.arctan2(y, x)
-    azimuth[azimuth < 0] = 2 * np.pi + azimuth[azimuth < 0]
-    colatitude = np.arccos(z / radius)
+    nonzero = radius > 0
+    cos_colatitude = np.divide(
+        z,
+        radius,
+        out=np.zeros_like(radius, dtype=np.result_type(radius, np.float32)),
+        where=nonzero,
+    )
+    azimuth = np.mod(np.arctan2(y, x), 2 * np.pi)
+    colatitude = np.arccos(np.clip(cos_colatitude, -1.0, 1.0))
+    azimuth = np.where(nonzero, azimuth, 0.0)
+    colatitude = np.where(nonzero, colatitude, 0.0)
     return azimuth, colatitude, radius
 
 

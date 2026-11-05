@@ -2510,8 +2510,8 @@ packages:
   timestamp: 1774492402955
 - pypi: ./
   name: tractography
-  version: 0.2.10
-  sha256: 890ff7310798b0119df6069b35f110818cea71d619f2c5c71b111ad90c9cd8d4
+  version: 0.3.0
+  sha256: b68437ba4892601a5180fc251e04e9789fa1bcc39ec1663b8e0c153be692def3
   requires_dist:
   - numpy>=2.0
   - nibabel~=5.3
@@ -2519,10 +2519,9 @@ packages:
   - pyopencl>=2024
   - siphash24~=1.7
   - nimesh @ git+https://gitlab.inria.fr/cronos/software/nimesh
-  - nimesh>=0.0.2
   - pydantic~=2.10
   - trimesh>=4.7
-  requires_python: '>=3.10'
+  requires_python: '>=3.12'
 - pypi: https://files.pythonhosted.org/packages/24/83/72e812f772daee66651f468c7b2535fa05eac27db26df7e614cae823c832/trimesh-4.11.5-py3-none-any.whl
   name: trimesh
   version: 4.11.5
