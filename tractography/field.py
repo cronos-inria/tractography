@@ -89,7 +89,7 @@ class Image(BaseField):
             __global const float4* inverse_affine;
         } Field;
         
-        void field_evaluate(Field f, float3 point, float* result) {
+        bool field_evaluate(Field f, float3 point, float* result) {
             
             // Transform the point from world coordinates to voxel coordinates.
             float4 point_h = (float4)(point.x, point.y, point.z, 1.0f);
@@ -108,10 +108,12 @@ class Image(BaseField):
                 for (int i = 0; i < f.dims.w; ++i) {
                     result[i] = f.data[index + i];
                 }
+                return true;
             } else {
                 for (int i = 0; i < f.dims.w; ++i) {
                     result[i] = 0.0f; // Outside the image bounds
                 }
+                return false;
             }
         }
         """
