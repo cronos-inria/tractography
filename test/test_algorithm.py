@@ -148,3 +148,35 @@ def test_transport_update_orientation_at_and_near_poles():
     assert np.all(np.isfinite(result))
     np.testing.assert_allclose(np.linalg.norm(result, axis=1), 1.0, atol=1e-6)
     assert np.all(np.linalg.norm(result - orientations, axis=1) > 0.0)
+
+
+def test_deterministic_update_orientation_finds_local_maximum():
+    """Use Newton ascent to find the nearby maximum of an SH model."""
+    parameters = _quadratic_fod_coefficients(0.1, 0.3)[None, :]
+    orientation = np.array([[0.2, 0.0, np.sqrt(1.0 - 0.2**2)]], dtype=np.float32)
+    model = tg.local.RealSymmetricSphericalHarmonics(parameters.shape[1])
+    algorithm = tg.algorithm.Deterministic(model)
+
+    numpy_result = algorithm.update_orientation(parameters, orientation)
+    opencl_result = tg.algorithm.update_orientation(algorithm, parameters, orientation)
+    initial_value = model.evaluate(parameters, orientation)[0, 0]
+    maximum_value = model.evaluate(parameters, numpy_result)[0, 0]
+
+    assert isinstance(algorithm, tg.algorithm.BaseAlgorithm)
+    assert maximum_value > initial_value
+    np.testing.assert_allclose(numpy_result[0], [1 / np.sqrt(2), 0.0, 1 / np.sqrt(2)], atol=2e-3)
+    np.testing.assert_allclose(opencl_result, numpy_result, atol=2e-3)
+    np.testing.assert_allclose(np.linalg.norm(numpy_result, axis=1), 1.0, atol=1e-6)
+
+
+def test_deterministic_update_orientation_empty_input():
+    """Return an empty result without starting OpenCL."""
+    model = tg.local.RealSymmetricSphericalHarmonics(15)
+    algorithm = tg.algorithm.Deterministic(model)
+    local_models = np.empty((0, model.n_parameters), dtype=np.float32)
+    orientations = np.empty((0, 3), dtype=np.float32)
+
+    result = tg.algorithm.update_orientation(algorithm, local_models, orientations)
+
+    assert result.shape == (0, 3)
+    assert result.dtype == np.float32

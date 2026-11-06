@@ -2,7 +2,7 @@
 
 `tg.algorithm.BaseAlgorithm` is the abstract interface for classes that update fiber orientations from local-model data.
 It is distinct from `tg.Algorithm`, the enum used to select a complete tractography implementation and its configuration.
-For the built-in orientation updater, see [Transport](transport-algorithm.md).
+For the built-in orientation updaters, see [Transport](transport-algorithm.md) and [Deterministic](deterministic-algorithm.md).
 
 ## Interface
 
