@@ -96,3 +96,30 @@ def test_tractogram_respects_save_interval_and_maximum_length():
 		streamline[:, 0], np.arange(0.0, 3.0, 0.5), atol=1e-6
 	)
 	np.testing.assert_allclose(streamline[:, 1:], 0.0, atol=1e-6)
+
+
+def test_tractogram_accepts_diffusion_algorithm():
+	"""Run the stochastic algorithm through the shared tracking kernel."""
+	domain = tg.domain.Image(
+		Nifti1Image(np.ones((1, 1, 1), dtype=np.uint8), np.eye(4))
+	)
+	field_data = np.zeros((1, 1, 1, 15), dtype=np.float32)
+	field_data[..., 0] = 1.0
+	field = tg.field.Image(Nifti1Image(field_data, np.eye(4)))
+	algorithm = tg.algorithm.Diffusion(
+		tg.local.RealSymmetricSphericalHarmonics(15),
+		step_size=1.0,
+		gamma=0.0,
+		noise_variance=0.0,
+		seed=1234,
+	)
+	seeds = np.array([[0.0, 0.0, 0.0, 1.0, 0.0, 0.0]], dtype=np.float32)
+
+	result = tractogram(algorithm, domain, field, seeds)
+
+	assert len(result.streamlines) == 1
+	np.testing.assert_allclose(
+		np.asarray(result.streamlines[0]),
+		[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+		atol=1e-6,
+	)

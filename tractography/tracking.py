@@ -92,6 +92,7 @@ def tractogram(
         DOMAIN_ARGS,
         FIELD_ARGS,
         ALGORITHM_ARGS,
+        uint rng_seed,
         __global const float4* seeds,
         uint n_seeds,
         __global float4* streamlines,
@@ -108,6 +109,7 @@ def tractogram(
         // Initialize the first streamline point and orientation with the seed.
         float4 point = seeds[gid * 2];
         float4 orientation = seeds[gid * 2 + 1];
+        uint2 rng_state = rng_init(rng_seed, gid);
 
         streamlines[gid * $N_STEPS] = point;
         size_t n = 1;
@@ -127,7 +129,7 @@ def tractogram(
             }
 
             // Update the orientation using the current field parameters.
-            orientation = algorithm_update_orientation(algorithm, tmp, orientation);
+            orientation = algorithm_update_orientation(algorithm, tmp, orientation, &rng_state);
 
             // Move the point forward.
             point += algorithm.step_size * orientation;
@@ -159,6 +161,7 @@ def tractogram(
 
     args = domain.get_args(_context) + field.get_args(_context) + algorithm.get_args()
     args += [
+        clt.uint(algorithm.get_rng_seed()),
         seeds_buffer,
         clt.uint(n_seeds),
         streamlines_buffer,

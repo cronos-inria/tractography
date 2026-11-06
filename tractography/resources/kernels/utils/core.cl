@@ -172,6 +172,24 @@ inline uint MWC64X(uint2 *state)
     return res;                       // Return the next result
 }
 
+// Mix a host-provided seed and work-item ID into a per-work-item MWC64X state.
+inline uint rng_mix32(uint value)
+{
+    value ^= value >> 16;
+    value *= 0x7feb352dU;
+    value ^= value >> 15;
+    value *= 0x846ca68bU;
+    value ^= value >> 16;
+    return value;
+}
+
+inline uint2 rng_init(uint seed, uint stream_id)
+{
+    const uint x = max(rng_mix32(seed ^ (stream_id + 0x9e3779b9U)), 1U);
+    const uint c = rng_mix32(seed + stream_id * 0x85ebca6bU) % 4294883355U;
+    return (uint2)(x, c);
+}
+
 // Returns a float in the range [0, 1) with uniform distribution.
 //
 inline float randu(uint2 *state) {
