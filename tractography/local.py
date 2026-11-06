@@ -184,6 +184,77 @@ class RealSymmetricSphericalHarmonics(BaseLocalModel):
         return np.stack([value, dtheta * d, dphi * d], axis=-1)
 
 
+class DiffusionTensorImaging(BaseLocalModel):
+    """Evaluate a symmetric diffusion tensor along each orientation.
+
+    Each parameter row stores the six independent tensor coefficients in
+    ``(Dxx, Dyy, Dzz, Dxy, Dxz, Dyz)`` order. The model value is
+    ``u.T @ D @ u``. Its output columns contain the value, the derivative
+    with respect to the polar angle, and the azimuthal derivative divided
+    by ``sin(theta)``.
+    """
+
+    def __init__(self):
+        super().__init__(6)
+
+    def get_source(self) -> str:
+        """Return OpenCL source for evaluating the tensor encoding."""
+        return super().get_source() + """
+#include "utils/core.cl"
+
+ModelValue local_model_evaluate(float* model, float4 orientation) {
+    const float4 tensor_dot_u = (float4)(
+        model[0] * orientation.x + model[3] * orientation.y + model[4] * orientation.z,
+        model[3] * orientation.x + model[1] * orientation.y + model[5] * orientation.z,
+        model[4] * orientation.x + model[5] * orientation.y + model[2] * orientation.z,
+        0.0f);
+    const float2 angles = cart2sph(orientation);
+    float st, ct, sp, cp;
+    sp = sincos(angles.x, &cp);
+    st = sincos(angles.y, &ct);
+
+    const float4 e_theta = (float4)(ct * cp, ct * sp, -st, 0.0f);
+    const float4 e_phi = (float4)(-sp, cp, 0.0f, 0.0f);
+    ModelValue result;
+    result.value = dot(orientation, tensor_dot_u);
+    result.dtheta = 2.0f * dot(tensor_dot_u, e_theta);
+    result.dphi = 2.0f * dot(tensor_dot_u, e_phi);
+    return result;
+}
+"""
+
+    def evaluate(
+        self,
+        parameters: np.ndarray,
+        orientations: Orientations,
+    ) -> LocalModelValues:
+        """Evaluate tensor values and angular derivatives with NumPy."""
+        n_orientations = orientations.shape[0]
+        if n_orientations == 0:
+            return np.empty((0, 3), dtype=clt.float)
+
+        tensor = np.zeros((n_orientations, 3, 3), dtype=np.result_type(parameters, orientations))
+        tensor[:, 0, 0] = parameters[:, 0]
+        tensor[:, 1, 1] = parameters[:, 1]
+        tensor[:, 2, 2] = parameters[:, 2]
+        tensor[:, 0, 1] = tensor[:, 1, 0] = parameters[:, 3]
+        tensor[:, 0, 2] = tensor[:, 2, 0] = parameters[:, 4]
+        tensor[:, 1, 2] = tensor[:, 2, 1] = parameters[:, 5]
+
+        tensor_dot_u = np.einsum("nij,nj->ni", tensor, orientations)
+        value = np.einsum("ni,ni->n", orientations, tensor_dot_u)
+        phi, theta, _ = cart2sph(*orientations.T)
+        sin_theta, cos_theta = np.sin(theta), np.cos(theta)
+        sin_phi, cos_phi = np.sin(phi), np.cos(phi)
+        e_theta = np.stack(
+            [cos_theta * cos_phi, cos_theta * sin_phi, -sin_theta], axis=-1
+        )
+        e_phi = np.stack([-sin_phi, cos_phi, np.zeros(n_orientations)], axis=-1)
+        dtheta = 2.0 * np.einsum("ni,ni->n", tensor_dot_u, e_theta)
+        dphi = 2.0 * np.einsum("ni,ni->n", tensor_dot_u, e_phi)
+        return np.stack([value, dtheta, dphi], axis=-1).astype(clt.float)
+
+
 def evaluate(
         model: BaseLocalModel,
         parameters: np.ndarray,

@@ -19,6 +19,7 @@ Other coefficient counts are not currently supported by tracking and raise `Valu
 
 `tg.local.BaseLocalModel` describes a local model that can be evaluated at Cartesian orientations.
 The built-in `tg.local.RealSymmetricSphericalHarmonics` implementation is documented in [Real Symmetric Spherical Harmonics](local-spherical-harmonics.md).
+The built-in `tg.local.DiffusionTensorImaging` implementation is documented in [Diffusion Tensor Imaging](diffusion-tensor-imaging.md).
 
 The module-level `tg.local.evaluate(model, parameters, orientations)` evaluates a model with OpenCL.
 A model also provides `model.evaluate(parameters, orientations)`, which is the NumPy reference implementation for the built-in spherical-harmonic model.
