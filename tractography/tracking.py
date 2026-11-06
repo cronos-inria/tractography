@@ -130,10 +130,10 @@ def tractogram(
             orientation = algorithm_update_orientation(algorithm, tmp, orientation);
 
             // Move the point forward.
-            point += dt * orientation;
+            point += algorithm.step_size * orientation;
             
             // Move time forward and record point if necessary.
-            time += dt;
+            time += algorithm.step_size;
             if (time >= save_at) {
                 time -= save_at;
                 streamlines[gid * $N_STEPS + n] = point - time * orientation;

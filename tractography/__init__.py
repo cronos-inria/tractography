@@ -1,6 +1,6 @@
 from typing import Optional
 
-from . import algorithm, algorithms, configuration, connectivity, core, data, domain, field, local, nifti, seeds, utils
+from . import algorithm, algorithms, configuration, connectivity, core, data, domain, field, local, nifti, seeds, tracking, utils
 from .algorithms.core import Algorithm, BaseConfiguration
 
 from nibabel.nifti1 import Nifti1Image

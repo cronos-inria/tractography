@@ -49,6 +49,7 @@ mkdocs = { version = "*", channel = "conda-forge" }
 coverage = { version = "*", channel = "conda-forge" }
 
 [tool.pixi.tasks]
+tractography = "tractography"
 test = "python -c 'import tractography'"
 unittest = "python -m unittest"
 coverage = "coverage run -m unittest -v && coverage report && coverage html"
