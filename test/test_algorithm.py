@@ -200,3 +200,46 @@ def test_diffusion_update_orientation_is_seeded_and_normalized():
     np.testing.assert_allclose(first_result, second_result)
     np.testing.assert_allclose(np.linalg.norm(first_result, axis=1), 1.0, atol=1e-5)
     assert np.any(np.linalg.norm(first_result - orientations, axis=1) > 0.0)
+
+
+def test_probabilistic_update_samples_density_within_cap():
+    """Sample directions within the cap, favoring higher local-model values."""
+    n_orientations = 256
+    max_angle = 0.6
+    parameters = np.tile(
+        np.array([[2.0, 1.0, 1.0, 0.0, 0.0, 0.0]], dtype=np.float32),
+        (n_orientations, 1),
+    )
+    orientations = np.tile(
+        np.array([[1.0, 0.0, 0.0]], dtype=np.float32),
+        (n_orientations, 1),
+    )
+    model = tg.local.DiffusionTensorImaging()
+    numpy_algorithm = tg.algorithm.Probabilistic(
+        model, n_samples=128, max_angle=max_angle, seed=1234
+    )
+    numpy_repeat = tg.algorithm.Probabilistic(
+        model, n_samples=128, max_angle=max_angle, seed=1234
+    )
+    numpy_result = numpy_algorithm.update_orientation(parameters, orientations)
+    numpy_repeat_result = numpy_repeat.update_orientation(parameters, orientations)
+
+    opencl_algorithm = tg.algorithm.Probabilistic(
+        model, n_samples=128, max_angle=max_angle, seed=5678
+    )
+    opencl_repeat = tg.algorithm.Probabilistic(
+        model, n_samples=128, max_angle=max_angle, seed=5678
+    )
+    opencl_result = tg.algorithm.update_orientation(
+        opencl_algorithm, parameters, orientations
+    )
+    opencl_repeat_result = tg.algorithm.update_orientation(
+        opencl_repeat, parameters, orientations
+    )
+
+    np.testing.assert_allclose(numpy_result, numpy_repeat_result)
+    np.testing.assert_allclose(opencl_result, opencl_repeat_result)
+    for result in (numpy_result, opencl_result):
+        np.testing.assert_allclose(np.linalg.norm(result, axis=1), 1.0, atol=1e-5)
+        assert np.all(result[:, 0] >= np.cos(max_angle) - 1e-5)
+        assert np.mean(result[:, 0]) > 0.88

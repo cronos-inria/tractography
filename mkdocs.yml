@@ -29,6 +29,7 @@ nav:
       - Transport Orientation Algorithm: user-guide/transport-algorithm.md
       - Diffusion Orientation Algorithm: user-guide/diffusion-algorithm.md
       - Deterministic Orientation Algorithm: user-guide/deterministic-algorithm.md
+      - Probabilistic Orientation Algorithm: user-guide/probabilistic-algorithm.md
       - Tracking: user-guide/tracking.md
     - About: 
         - about/release-notes.md
