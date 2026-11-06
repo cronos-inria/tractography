@@ -258,6 +258,173 @@ float4 algorithm_update_orientation(
         return exps2(orientations, tangent, 1.0)
 
 
+class Probabilistic(BaseAlgorithm):
+    """Sample a new orientation from the local model near the current one.
+
+    Candidate directions are drawn uniformly from a spherical cap centered on
+    each input orientation. One candidate is then selected with probability
+    proportional to its nonnegative local-model value. This is a finite-sample
+    approximation to sampling the local orientation density.
+
+    Args:
+        local_model: Model whose nonnegative value defines the sampling density.
+        n_samples: Number of candidate directions drawn per input orientation.
+        max_angle: Radius of the spherical sampling cap, in radians.
+        seed: Optional seed controlling the NumPy and OpenCL random streams.
+        step_size: Inherited tracking step size; it does not affect sampling.
+    """
+
+    def __init__(
+        self,
+        local_model: BaseLocalModel,
+        n_samples: int = 64,
+        max_angle: float = np.pi / 12,
+        seed: int | None = None,
+        step_size: float = 0.25,
+    ):
+        super().__init__(local_model, step_size=step_size)
+        if n_samples <= 0:
+            raise ValueError("n_samples must be positive")
+        if not np.isfinite(max_angle) or not 0.0 <= max_angle <= np.pi:
+            raise ValueError("max_angle must be finite and between 0 and pi")
+        self.n_samples = int(n_samples)
+        self.max_angle = float(max_angle)
+        self._rng = np.random.default_rng(seed)
+
+    def get_source(self) -> str:
+        """Return the OpenCL source for probabilistic orientation sampling."""
+        return self.local_model.get_source() + Template("""
+#include "utils/core.cl"
+
+#define ALGORITHM_ARGS float algorithm_step_size, float algorithm_max_angle
+#define ALGORITHM_BUILD(a) Algorithm a = {algorithm_step_size, algorithm_max_angle};
+#define N_SAMPLES $N_SAMPLES
+
+typedef struct {
+    float step_size;
+    float max_angle;
+} Algorithm;
+
+float4 algorithm_update_orientation(
+    Algorithm algorithm,
+    float* local_model,
+    float4 orientation,
+    uint2* rng_state)
+{
+    const float orientation_norm = length(orientation.xyz);
+    if (orientation_norm <= 1e-8f) {
+        orientation = (float4)(0.0f, 0.0f, 1.0f, 0.0f);
+    } else {
+        orientation = (float4)(orientation.xyz / orientation_norm, 0.0f);
+    }
+
+    // Construct an orthonormal frame around the current orientation.
+    const float4 helper = fabs(orientation.z) < 0.9f
+        ? (float4)(0.0f, 0.0f, 1.0f, 0.0f)
+        : (float4)(0.0f, 1.0f, 0.0f, 0.0f);
+    const float3 tangent1_xyz = normalize(cross(helper.xyz, orientation.xyz));
+    const float4 tangent1 = (float4)(tangent1_xyz, 0.0f);
+    const float4 tangent2 = (float4)(cross(orientation.xyz, tangent1.xyz), 0.0f);
+    const float cos_max_angle = cos(algorithm.max_angle);
+
+    // First pass computes the total density. The RNG state is replayed in the
+    // second pass, avoiding per-work-item storage for the candidate directions.
+    const uint2 initial_rng_state = *rng_state;
+    float total_weight = 0.0f;
+    for (uint i = 0; i < N_SAMPLES; ++i) {
+        const float cos_angle = 1.0f - randu(rng_state) * (1.0f - cos_max_angle);
+        const float sin_angle = sqrt(max(0.0f, 1.0f - cos_angle * cos_angle));
+        const float azimuth = 2.0f * PI * randu(rng_state);
+        const float4 candidate = cos_angle * orientation + sin_angle *
+            (cos(azimuth) * tangent1 + sin(azimuth) * tangent2);
+        const float value = local_model_evaluate(local_model, candidate).value;
+        total_weight += isfinite(value) ? fmax(value, 0.0f) : 0.0f;
+    }
+
+    if (total_weight <= 0.0f) {
+        return orientation;
+    }
+
+    const float target = randu(rng_state) * total_weight;
+    *rng_state = initial_rng_state;
+    float cumulative_weight = 0.0f;
+    for (uint i = 0; i < N_SAMPLES; ++i) {
+        const float cos_angle = 1.0f - randu(rng_state) * (1.0f - cos_max_angle);
+        const float sin_angle = sqrt(max(0.0f, 1.0f - cos_angle * cos_angle));
+        const float azimuth = 2.0f * PI * randu(rng_state);
+        const float4 candidate = cos_angle * orientation + sin_angle *
+            (cos(azimuth) * tangent1 + sin(azimuth) * tangent2);
+        const float value = local_model_evaluate(local_model, candidate).value;
+        cumulative_weight += isfinite(value) ? fmax(value, 0.0f) : 0.0f;
+        if (cumulative_weight > target) {
+            return candidate;
+        }
+    }
+    return orientation;
+}
+""").substitute(N_SAMPLES=self.n_samples)
+
+    def get_args(self) -> list[Any]:
+        """Return the scalar OpenCL arguments for this algorithm."""
+        return [clt.float(self.step_size), clt.float(self.max_angle)]
+
+    def get_rng_seed(self) -> int:
+        """Draw one seed; device code derives one RNG state per work item."""
+        return int(self._rng.integers(0, np.iinfo(np.uint32).max, dtype=np.uint32))
+
+    def update_orientation(self, local_models: np.ndarray, orientations: Orientations):
+        """Sample orientations from local-model values in spherical caps."""
+        n_orientations = orientations.shape[0]
+        result_dtype = np.result_type(orientations, np.float32)
+        if n_orientations == 0:
+            return np.empty((0, 3), dtype=result_dtype)
+
+        unit_orientations = np.asarray(orientations, dtype=result_dtype).copy()
+        norms = np.linalg.norm(unit_orientations, axis=1)
+        invalid = norms <= 1e-8
+        unit_orientations[~invalid] /= norms[~invalid, np.newaxis]
+        unit_orientations[invalid] = (0.0, 0.0, 1.0)
+
+        # Build a stable orthonormal tangent frame for each input direction.
+        helpers = np.zeros_like(unit_orientations)
+        use_z_axis = np.abs(unit_orientations[:, 2]) < 0.9
+        helpers[use_z_axis, 2] = 1.0
+        helpers[~use_z_axis, 1] = 1.0
+        tangent1 = np.cross(helpers, unit_orientations)
+        tangent1 /= np.linalg.norm(tangent1, axis=1, keepdims=True)
+        tangent2 = np.cross(unit_orientations, tangent1)
+
+        random_values = self._rng.random((n_orientations, self.n_samples, 2))
+        cos_max_angle = np.cos(self.max_angle)
+        cos_angles = 1.0 - random_values[:, :, 0] * (1.0 - cos_max_angle)
+        sin_angles = np.sqrt(np.maximum(0.0, 1.0 - cos_angles**2))
+        azimuths = 2.0 * np.pi * random_values[:, :, 1]
+        candidates = (
+            cos_angles[:, :, np.newaxis] * unit_orientations[:, np.newaxis, :]
+            + sin_angles[:, :, np.newaxis]
+            * (
+                np.cos(azimuths)[:, :, np.newaxis] * tangent1[:, np.newaxis, :]
+                + np.sin(azimuths)[:, :, np.newaxis] * tangent2[:, np.newaxis, :]
+            )
+        )
+
+        repeated_models = np.repeat(local_models, self.n_samples, axis=0)
+        values = self.local_model.evaluate(
+            repeated_models, candidates.reshape(-1, 3)
+        )[:, 0].reshape(n_orientations, self.n_samples)
+        weights = np.where(np.isfinite(values), np.maximum(values, 0.0), 0.0)
+        totals = np.sum(weights, axis=1)
+        result = unit_orientations.copy()
+        valid = totals > 0.0
+        if np.any(valid):
+            targets = self._rng.random(np.count_nonzero(valid)) * totals[valid]
+            cumulative = np.cumsum(weights[valid], axis=1)
+            selected = np.sum(cumulative <= targets[:, np.newaxis], axis=1)
+            selected = np.minimum(selected, self.n_samples - 1)
+            result[valid] = candidates[valid, selected]
+        return result.astype(result_dtype, copy=False)
+
+
 class Deterministic(BaseAlgorithm):
     """Maximize the local model near each input direction on the unit sphere.
 
