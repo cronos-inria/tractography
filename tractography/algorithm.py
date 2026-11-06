@@ -31,6 +31,10 @@ class BaseAlgorithm(ABC):
     def get_args(self) -> list[Any]:
         """Return the scalar OpenCL arguments for this algorithm."""
 
+    def get_rng_seed(self) -> int:
+        """Return a seed for per-work-item OpenCL RNG initialization."""
+        return 0
+
     @abstractmethod
     def update_orientation(
         self, local_models: np.ndarray, orientations: Orientations
@@ -68,7 +72,8 @@ typedef struct {
 float4 algorithm_update_orientation(
     Algorithm algorithm,
     float* local_model,
-    float4 orientation)
+    float4 orientation,
+    uint2* rng_state)
 {
     ModelValue evaluated_model = local_model_evaluate(local_model, orientation);
 
@@ -137,6 +142,119 @@ float4 algorithm_update_orientation(
 
         # The final result is the new orientation after moving along
         # the tangent vector.
+        return exps2(orientations, tangent, 1.0)
+
+
+class Diffusion(BaseAlgorithm):
+    """Update orientations with drift and tangent-plane Gaussian noise.
+
+    Args:
+        local_model: Model that evaluates a value and its orientation
+            derivatives.
+        step_size: Integration time step.
+        gamma: Drift and noise scaling factor.
+        noise_variance: Variance of the stochastic tangent-plane term.
+        seed: Optional seed controlling the NumPy and OpenCL random streams.
+    """
+
+    def __init__(
+        self,
+        local_model: BaseLocalModel,
+        step_size: float = 0.001,
+        gamma: float = 1.0,
+        noise_variance: float = 0.1,
+        seed: int | None = None,
+    ):
+        super().__init__(local_model, step_size=step_size)
+        self.gamma = gamma
+        self.noise_variance = noise_variance
+        self._rng = np.random.default_rng(seed)
+
+    def get_source(self) -> str:
+        """Return the OpenCL source for the diffusion orientation update."""
+        return self.local_model.get_source() + """
+#include "utils/core.cl"
+
+#define ALGORITHM_ARGS float algorithm_step_size, float algorithm_gamma, float algorithm_noise_variance
+#define ALGORITHM_BUILD(a) Algorithm a = {algorithm_step_size, algorithm_gamma, algorithm_noise_variance};
+
+typedef struct {
+    float step_size;
+    float gamma;
+    float noise_variance;
+} Algorithm;
+
+float4 algorithm_update_orientation(
+    Algorithm algorithm,
+    float* local_model,
+    float4 orientation,
+    uint2* rng_state)
+{
+    const ModelValue evaluated_model = local_model_evaluate(local_model, orientation);
+    const float2 angles = cart2sph(orientation);
+    float st, ct;
+    float sp, cp;
+    sp = sincos(angles.x, &cp);
+    st = sincos(angles.y, &ct);
+
+    const float4 et = (float4)(ct * cp, ct * sp, -st, 0.0f);
+    const float4 ep = (float4)(-sp, cp, 0.0f, 0.0f);
+    const float4 drift =
+        (evaluated_model.dtheta * et + evaluated_model.dphi * ep)
+        / max(evaluated_model.value, 1e-6f);
+
+    float4 noise = (float4)(0.0f);
+    if (algorithm.noise_variance > 0.0f) {
+        noise = randn(rng_state) * et + randn(rng_state) * ep;
+    }
+
+    const float scale_drift = algorithm.gamma * algorithm.step_size;
+    const float scale_noise = native_sqrt(
+        algorithm.noise_variance * algorithm.gamma * algorithm.step_size
+    );
+    const float4 tangent = scale_drift * drift + scale_noise * noise;
+    return exps2(orientation, tangent, 1.0f);
+}
+"""
+
+    def get_args(self) -> list[Any]:
+        """Return the scalar OpenCL arguments for this algorithm."""
+        return [
+            clt.float(self.step_size),
+            clt.float(self.gamma),
+            clt.float(self.noise_variance),
+        ]
+
+    def get_rng_seed(self) -> int:
+        """Draw one seed; device code derives one RNG state per work item."""
+        return int(self._rng.integers(0, np.iinfo(np.uint32).max, dtype=np.uint32))
+
+    def update_orientation(self, local_models: np.ndarray, orientations: Orientations):
+        """Update orientations using the NumPy diffusion reference."""
+        n_orientations = orientations.shape[0]
+        model_values = self.local_model.evaluate(local_models, orientations)
+
+        phi, theta, _ = cart2sph(*orientations.T)
+        sp, cp = np.sin(phi), np.cos(phi)
+        st, ct = np.sin(theta), np.cos(theta)
+        et = np.stack([ct * cp, ct * sp, -st], axis=-1)
+        ep = np.stack([-sp, cp, np.zeros(n_orientations)], axis=-1)
+
+        dtheta = model_values[:, 1, np.newaxis]
+        dphi = model_values[:, 2, np.newaxis]
+        value = model_values[:, 0, np.newaxis]
+        drift = (dtheta * et + dphi * ep) / np.maximum(value, 1e-6)
+
+        noise = np.zeros_like(drift)
+        if self.noise_variance > 0.0:
+            samples = self._rng.standard_normal((n_orientations, 2))
+            noise = samples[:, :1] * et + samples[:, 1:] * ep
+
+        scale_drift = self.gamma * self.step_size
+        scale_noise = np.sqrt(
+            self.noise_variance * self.gamma * self.step_size
+        )
+        tangent = scale_drift * drift + scale_noise * noise
         return exps2(orientations, tangent, 1.0)
 
 
@@ -241,7 +359,8 @@ float4 deterministic_line_search(
 float4 algorithm_update_orientation(
     Algorithm algorithm,
     float* local_model,
-    float4 orientation)
+    float4 orientation,
+    uint2* rng_state)
 {
     // Work with a unit direction so the tangent frame and spherical
     // exponential map have their expected geometry.
@@ -437,6 +556,7 @@ def update_orientation(algorithm: BaseAlgorithm, local_models: np.ndarray, orien
     source = algorithm.get_source() + Template("""
     __kernel void update_orientation(
         ALGORITHM_ARGS,
+        uint rng_seed,
         __global const float* local_models,
         __global const float4* orientations,
         uint n_orientations,
@@ -451,7 +571,8 @@ def update_orientation(algorithm: BaseAlgorithm, local_models: np.ndarray, orien
         for (int i = 0; i < $N_PARAMETERS; ++i) {
             tmp[i] = local_models[gid * $N_PARAMETERS + i];
         }
-        results[gid] = algorithm_update_orientation(algorithm, tmp, orientations[gid]);
+        uint2 rng_state = rng_init(rng_seed, gid);
+        results[gid] = algorithm_update_orientation(algorithm, tmp, orientations[gid], &rng_state);
     }
     """).substitute(N_PARAMETERS=algorithm.local_model.n_parameters)
 
@@ -468,6 +589,7 @@ def update_orientation(algorithm: BaseAlgorithm, local_models: np.ndarray, orien
     result = np.empty((n_orientations, 4), dtype=clt.float)
     results_buffer = cl.Buffer(_context, WRITE_ONLY, size=result.nbytes)
     args = algorithm.get_args() + [
+        clt.uint(algorithm.get_rng_seed()),
         local_models_buffer,
         orientations_buffer,
         clt.uint(n_orientations),

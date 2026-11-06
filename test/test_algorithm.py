@@ -180,3 +180,23 @@ def test_deterministic_update_orientation_empty_input():
 
     assert result.shape == (0, 3)
     assert result.dtype == np.float32
+
+
+def test_diffusion_update_orientation_is_seeded_and_normalized():
+    """Initialize device RNG states reproducibly for each orientation."""
+    parameters = np.zeros((3, 15), dtype=np.float32)
+    parameters[:, 0] = 1.0
+    orientations = np.array(
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        dtype=np.float32,
+    )
+    model = tg.local.RealSymmetricSphericalHarmonics(15)
+    first = tg.algorithm.Diffusion(model, noise_variance=1.0, seed=1234)
+    second = tg.algorithm.Diffusion(model, noise_variance=1.0, seed=1234)
+
+    first_result = tg.algorithm.update_orientation(first, parameters, orientations)
+    second_result = tg.algorithm.update_orientation(second, parameters, orientations)
+
+    np.testing.assert_allclose(first_result, second_result)
+    np.testing.assert_allclose(np.linalg.norm(first_result, axis=1), 1.0, atol=1e-5)
+    assert np.any(np.linalg.norm(first_result - orientations, axis=1) > 0.0)
