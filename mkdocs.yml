@@ -24,6 +24,7 @@ nav:
       - Image Fields: user-guide/image-fields.md
       - Local Models: user-guide/local-models.md
       - Real Symmetric Spherical Harmonics: user-guide/local-spherical-harmonics.md
+      - Diffusion Tensor Imaging: user-guide/diffusion-tensor-imaging.md
       - Base Algorithm: user-guide/base-algorithm.md
       - Transport Orientation Algorithm: user-guide/transport-algorithm.md
       - Diffusion Orientation Algorithm: user-guide/diffusion-algorithm.md
