@@ -50,3 +50,22 @@ print(result)  # [ True False False]
 `domain.contains(points)` is the NumPy reference implementation.
 `tg.domain.contains(domain, points)` evaluates the same membership test with OpenCL and requires a working OpenCL runtime.
 Both methods take world-space points with shape `(n_points, 3)` and return one Boolean result per point.
+
+## Generate seeds from the boundary
+
+`tg.domain.Image` extracts a triangular boundary from the nonzero image voxels using marching cubes.
+`tg.domain.seed` samples this surface proportional to triangle area, returns points slightly inside the boundary, and assigns each seed an inward-pointing surface-normal orientation.
+The boundary and seed coordinates use world-space millimeters.
+Seed generation runs on OpenCL and requires a working OpenCL runtime.
+
+```python
+# Generate 1,000 boundary seeds. The optional RNG seed makes the sampling
+# reproducible on the same OpenCL implementation.
+seeds = tg.domain.seed(domain, n_seeds=1000, rng_seed=42)
+
+print(seeds[0].location)
+print(seeds[0].orientation)
+```
+
+Pass the returned seeds to `tg.tractogram` or another tracking function that accepts `Seed` objects.
+An empty image mask is rejected because it has no boundary to sample.

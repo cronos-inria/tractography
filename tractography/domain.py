@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from importlib.resources import files
 from typing import Any
 
 from nibabel.affines import apply_affine
@@ -6,42 +7,128 @@ from nibabel.spatialimages import SpatialImage
 import numpy as np
 import pyopencl as cl
 import pyopencl.cltypes as clt
+import trimesh
+from trimesh import Trimesh
+
+from .seeds import Seed
 
 type Points = np.ndarray[tuple[int, int], Any]
 type ContainsResult = np.ndarray[tuple[int], np.dtype[np.bool_]]
 
 READ_ONLY = cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR
 WRITE_ONLY = cl.mem_flags.WRITE_ONLY
+_OPENCL_DIR = files("tractography.resources") / "kernels"
 
 
 class BaseDomain(ABC):
-    """Abstract interface for domains used to constrain tractography."""
+    """Abstract interface for domains used to constrain tractography.
 
-    @abstractmethod
-    def get_source(self) -> str:
-        """Return OpenCL source defining the domain.
-        
-        The returned OpenCL source must implement:
-            - the DOMAIN_ARGS macro for defining the kernel arguments.
-            - the DOMAIN_BUILD macro for constructing the domain struct.
-            - the Domain struct defining the domain data.
-            - the domain_contains function for checking if a point is within
-                the domain.
-        
+    Subclasses provide their domain-specific OpenCL definitions through
+    ``get_source()`` and should append ``super().get_source()`` to include the
+    shared boundary sampler. Their ``get_args()`` implementations should also
+    append ``super().get_args(context)`` to include the boundary buffers.
+    """
+
+    def __init__(self, boundary: Trimesh) -> None:
+        """Initialize the base domain.
+
+        Boundary triangles must be non-degenerate and wound so their normals
+        point out of the domain.
         """
-        pass
+        super().__init__()
+        self.boundary = boundary
+        self._set_boundary_data(boundary)
 
-    @abstractmethod
+    def _set_boundary_data(self, boundary: Trimesh) -> None:
+        if len(boundary.faces) == 0:
+            raise ValueError("The boundary mesh must contain at least one triangle.")
+
+        vertices = np.asarray(boundary.vertices, dtype=np.float64)
+        faces = np.asarray(boundary.faces, dtype=np.uint32)
+        triangle_areas = np.asarray(boundary.area_faces, dtype=np.float64)
+        valid = np.isfinite(triangle_areas) & (triangle_areas > 0)
+        faces = faces[valid]
+        triangle_areas = triangle_areas[valid]
+        if len(faces) == 0:
+            raise ValueError("The boundary mesh must contain a non-degenerate triangle.")
+
+        vertices4 = np.ones((len(vertices), 4), dtype=clt.float)
+        vertices4[:, :3] = vertices
+        indices4 = np.zeros((len(faces), 4), dtype=clt.uint)
+        indices4[:, :3] = faces
+        total_area = float(np.sum(triangle_areas, dtype=np.float64))
+        if not np.isfinite(total_area) or total_area <= 0:
+            raise ValueError("The boundary mesh must have a finite, positive area.")
+        cumulative = np.cumsum(triangle_areas / total_area).astype(clt.float)
+        cumulative[-1] = 1.0
+
+        self.boundary_vertices = np.ascontiguousarray(vertices4)
+        self.boundary_indices = np.ascontiguousarray(indices4)
+        self.boundary_cumulative_areas = np.ascontiguousarray(cumulative)
+        self.n_boundary_triangles = len(faces)
+
+    def get_source(self) -> str:
+        """Return OpenCL definitions for the reusable boundary sampler."""
+        return r"""
+        #include "utils/core.cl"
+
+        typedef struct {
+            __global const float4* vertices;
+            __global const uint4* indices;
+            __global const float* cumulative_areas;
+            uint n_triangles;
+        } Boundary;
+
+        inline void domain_sample_boundary(
+            Boundary boundary,
+            uint2* rng_state,
+            float3* point,
+            float3* orientation)
+        {
+            const float target = randu(rng_state);
+            uint lower = 0;
+            uint upper = boundary.n_triangles;
+            while (lower < upper) {
+                const uint middle = lower + (upper - lower) / 2;
+                if (boundary.cumulative_areas[middle] <= target) {
+                    lower = middle + 1;
+                } else {
+                    upper = middle;
+                }
+            }
+            const uint triangle_id = min(lower, boundary.n_triangles - 1);
+            const uint4 indices = boundary.indices[triangle_id];
+            const float3 a = boundary.vertices[indices.x].xyz;
+            const float3 b = boundary.vertices[indices.y].xyz;
+            const float3 c = boundary.vertices[indices.z].xyz;
+
+            const float root_u = sqrt(randu(rng_state));
+            const float v = randu(rng_state);
+            const float3 sampled = (1.0f - root_u) * a
+                + root_u * (1.0f - v) * b
+                + root_u * v * c;
+            const float3 outward = normalize(cross(b - a, c - a));
+            *orientation = -outward;
+            *point = sampled + 1e-4f * (*orientation);
+        }
+        """
+
     def get_args(self, context: cl.Context) -> list[Any]:
-        """Upload domain data and return kernel arguments in the required order.
+        """Upload boundary data and return its OpenCL arguments.
 
         Args:
             context: OpenCL context for creating domain buffers.
 
         Returns:
-            Arguments to pass to the domain's OpenCL kernel.
+            Boundary vertices, triangle indices, normalized cumulative areas,
+            and triangle count, in kernel order.
         """
-        pass
+        return [
+            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_vertices),
+            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_indices),
+            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_cumulative_areas),
+            clt.uint(self.n_boundary_triangles),
+        ]
 
     @abstractmethod
     def contains(self, points: Points) -> ContainsResult:
@@ -85,19 +172,40 @@ class Image(BaseDomain):
             np.linalg.inv(affine if affine is not None else np.eye(4)), 
             dtype=clt.float,
         )
+        if not np.any(self.values):
+            raise ValueError("Image domain must contain at least one nonzero voxel.")
+        boundary = trimesh.voxel.ops.matrix_to_marching_cubes(  # type: ignore[attr-defined]
+            self.values.astype(bool), pitch=1.0
+        )
+        boundary.apply_transform(affine if affine is not None else np.eye(4))
+        boundary.fix_normals(multibody=True)
+        super().__init__(boundary)
 
     def get_source(self) -> str:
-        """Return OpenCL source for image-domain containment checks.
-        
-        See BaseDomain.get_source for the required macros and function
-        signatures.
-        
-        """
-        return """
-        #define DOMAIN_ARGS __global const int* domain_mask, const uint3 domain_dims, __global const float4* domain_inverse_affine
-        #define DOMAIN_BUILD(d) Domain d = {domain_mask, domain_dims, domain_inverse_affine};
+        """Return OpenCL source for image containment and boundary sampling."""
+        return super().get_source() + """
+        #define DOMAIN_ARGS \\
+            __global const float4* domain_boundary_vertices, \\
+            __global const uint4* domain_boundary_indices, \\
+            __global const float* domain_boundary_cumulative_areas, \\
+            uint domain_n_boundary_triangles, \\
+            __global const int* domain_mask, \\
+            const uint3 domain_dims, \\
+            __global const float4* domain_inverse_affine
+
+        #define DOMAIN_BUILD(d) \\
+            Boundary boundary = { \\
+                domain_boundary_vertices, \\
+                domain_boundary_indices, \\
+                domain_boundary_cumulative_areas, \\
+                domain_n_boundary_triangles \\
+            }; \\
+            Domain d = { \\
+                boundary, domain_mask, domain_dims, domain_inverse_affine \\
+            };
 
         typedef struct {
+            Boundary boundary;
             __global const int* mask;
             uint3 dims;
             __global const float4* domain_inverse_affine;
@@ -139,7 +247,7 @@ class Image(BaseDomain):
         """
         values_buffer = cl.Buffer(context, READ_ONLY, hostbuf=self.values)
         affine_buffer = cl.Buffer(context, READ_ONLY, hostbuf=self.inverse_affine)
-        return [values_buffer, self.dims, affine_buffer]
+        return super().get_args(context) + [values_buffer, self.dims, affine_buffer]
 
     def contains(self, points: Points) -> ContainsResult:
         """Check whether world-space points map to nonzero image voxels.
@@ -226,8 +334,84 @@ def contains(domain: BaseDomain, points: Points) -> ContainsResult:
     ]
 
     # Run and transfer the results back to the host.
-    program = cl.Program(_context, source).build()
+    program = cl.Program(_context, source).build(f"-I {_OPENCL_DIR}")
     program.contains(_queue, (n_points,), None, *args)
     cl.enqueue_copy(_queue, result, results_buffer)
 
     return result
+
+
+def seed(
+    domain: BaseDomain,
+    n_seeds: int,
+    rng_seed: int | None = None,
+) -> list[Seed]:
+    """Generate seeds by sampling the domain boundary with OpenCL.
+
+    Each seed is sampled uniformly over the boundary surface area. Its
+    orientation points inward, and its location is offset slightly from the
+    boundary by the domain sampler.
+
+    Args:
+        domain: Domain providing boundary-sampling OpenCL code and arguments.
+        n_seeds: Number of seeds to generate.
+        rng_seed: Optional seed for reproducible sampling.
+
+    Returns:
+        A list of seeds with world-space locations and inward orientations.
+
+    Raises:
+        ValueError: If ``n_seeds`` is not a non-negative integer.
+    """
+    if not isinstance(n_seeds, (int, np.integer)) or n_seeds < 0:
+        raise ValueError("n_seeds must be a non-negative integer.")
+    if n_seeds == 0:
+        return []
+
+    if rng_seed is None:
+        rng_seed = int(np.random.default_rng().integers(0, 2**32, dtype=np.uint32))
+    rng_seed = int(rng_seed) % 2**32
+
+    source = domain.get_source() + """
+    __kernel void sample_domain_boundary(
+        DOMAIN_ARGS,
+        uint rng_seed,
+        uint n_seeds,
+        __global float4* locations,
+        __global float4* orientations)
+    {
+        const uint gid = get_global_id(0);
+        if (gid >= n_seeds) return;
+
+        DOMAIN_BUILD(domain)
+        uint2 rng_state = rng_init(rng_seed, gid);
+        float3 point;
+        float3 orientation;
+        domain_sample_boundary(domain.boundary, &rng_state, &point, &orientation);
+        locations[gid] = (float4)(point, 1.0f);
+        orientations[gid] = (float4)(orientation, 0.0f);
+    }
+    """
+
+    context = cl.create_some_context(interactive=False)
+    queue = cl.CommandQueue(context)
+    locations = np.empty((n_seeds, 4), dtype=clt.float)
+    orientations = np.empty((n_seeds, 4), dtype=clt.float)
+    locations_buffer = cl.Buffer(context, WRITE_ONLY, size=locations.nbytes)
+    orientations_buffer = cl.Buffer(context, WRITE_ONLY, size=orientations.nbytes)
+    args = domain.get_args(context) + [
+        clt.uint(rng_seed),
+        clt.uint(n_seeds),
+        locations_buffer,
+        orientations_buffer,
+    ]
+
+    program = cl.Program(context, source).build(f"-I {_OPENCL_DIR}")
+    program.sample_domain_boundary(queue, (n_seeds,), None, *args)
+    cl.enqueue_copy(queue, locations, locations_buffer)
+    cl.enqueue_copy(queue, orientations, orientations_buffer)
+
+    return [
+        Seed(location[:3], orientation[:3])
+        for location, orientation in zip(locations, orientations)
+    ]

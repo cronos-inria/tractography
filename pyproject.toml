@@ -23,6 +23,7 @@ readme = "README.rst"
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.0",
+    "scikit-image>=0.25",
     "nibabel~=5.3",
     "scipy>=1.15",
     "pyopencl>=2024",
