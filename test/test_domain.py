@@ -1,5 +1,8 @@
+from importlib.resources import files
+
 from nibabel.nifti1 import Nifti1Image
 import numpy as np
+import pyopencl as cl
 import pytest
 
 import tractography as tg
@@ -62,7 +65,7 @@ def test_domain_image_contains_reference_implementation():
 
 
 def test_image_domain_builds_oriented_world_space_boundary():
-    """The marching-cubes boundary is transformed and outward oriented."""
+    """Voxel-cell faces are transformed and outward oriented."""
     image = np.ones((1, 1, 1), dtype=np.uint8)
     affine = np.eye(4)
     affine[:3, :3] = np.diag([2.0, 3.0, 4.0])
@@ -71,6 +74,8 @@ def test_image_domain_builds_oriented_world_space_boundary():
 
     assert domain.boundary.is_watertight
     assert domain.n_boundary_triangles > 0
+    assert len(domain.boundary.vertices) == 8
+    assert domain.n_boundary_triangles == 12
     assert domain.boundary_cumulative_areas[-1] == 1.0
     assert np.all(np.diff(domain.boundary_cumulative_areas) >= 0)
     np.testing.assert_allclose(
@@ -80,6 +85,31 @@ def test_image_domain_builds_oriented_world_space_boundary():
     face_centers = domain.boundary.triangles_center - np.array([10.0, 20.0, 30.0])
     outward = domain.boundary.face_normals
     assert np.all(np.einsum("ij,ij->i", face_centers, outward) > 0)
+
+
+def test_image_domain_boundary_omits_faces_between_occupied_voxels():
+    domain = tg.domain.Image(
+        Nifti1Image(np.ones((2, 1, 1), dtype=np.uint8), np.eye(4))
+    )
+
+    assert domain.boundary.is_watertight
+    assert len(domain.boundary.vertices) == 12
+    assert domain.n_boundary_triangles == 20
+    assert domain.boundary.area == pytest.approx(10.0)
+
+
+def test_image_domain_contains_uses_half_open_voxel_cells():
+    domain = tg.domain.Image(
+        Nifti1Image(np.ones((1, 1, 1), dtype=np.uint8), np.eye(4))
+    )
+    points = np.array(
+        [[-0.5, 0, 0], [0.49, 0.49, 0.49], [0.5, 0, 0]],
+        dtype=np.float32,
+    )
+
+    expected = np.array([True, True, False])
+    np.testing.assert_array_equal(domain.contains(points), expected)
+    np.testing.assert_array_equal(tg.domain.contains(domain, points), expected)
 
 
 def test_empty_image_domain_is_rejected():
@@ -111,3 +141,81 @@ def test_domain_seed_validates_count_and_handles_zero():
     assert tg.domain.seed(domain, 0) == []
     with pytest.raises(ValueError, match="non-negative integer"):
         tg.domain.seed(domain, -1)
+
+
+def test_domain_boundary_bvh_finds_segment_triangle_hit():
+    domain = tg.domain.Image(
+        Nifti1Image(np.ones((1, 1, 1), dtype=np.uint8), np.eye(4))
+    )
+    context = cl.create_some_context(interactive=False)
+    queue = cl.CommandQueue(context)
+    source = domain.get_source() + """
+    __kernel void probe(DOMAIN_ARGS, __global int* result)
+    {
+        DOMAIN_BUILD(domain)
+        uint triangle;
+        float3 barycentric;
+        float hit_t;
+        result[0] = bvh_segment_hit(
+            domain.boundary_bvh,
+            (float3)(0.0f, 0.0f, 0.0f),
+            (float3)(-1.0f, 0.0f, 0.0f),
+            &triangle,
+            &barycentric,
+            &hit_t
+        );
+    }
+    """
+    result = np.zeros(1, dtype=np.int32)
+    buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, size=result.nbytes)
+    kernel_dir = files("tractography.resources") / "kernels"
+    program = cl.Program(context, source).build(f"-I {kernel_dir}")
+    program.probe(queue, (1,), None, *domain.get_args(context), buffer)
+    cl.enqueue_copy(queue, result, buffer)
+    assert result[0] == 1
+
+
+def test_domain_boundary_bvh_finds_sampled_inward_ray_exit():
+    domain = tg.domain.Image(
+        Nifti1Image(np.ones((1, 1, 1), dtype=np.uint8), np.eye(4))
+    )
+    context = cl.create_some_context(interactive=False)
+    queue = cl.CommandQueue(context)
+    source = domain.get_source() + """
+    __kernel void probe(DOMAIN_ARGS, __global int* results)
+    {
+        const uint gid = get_global_id(0);
+        DOMAIN_BUILD(domain)
+        uint2 rng_state = rng_init(1234, gid);
+        float3 point;
+        float3 orientation;
+        uint sampled_triangle;
+        float3 sampled_barycentric;
+        domain_sample_boundary(
+            domain.boundary,
+            &rng_state,
+            &point,
+            &orientation,
+            &sampled_triangle,
+            &sampled_barycentric
+        );
+        uint hit_triangle;
+        float3 hit_barycentric;
+        float hit_t;
+        results[gid] = bvh_segment_hit(
+            domain.boundary_bvh,
+            point,
+            point + 2.0f * orientation,
+            &hit_triangle,
+            &hit_barycentric,
+            &hit_t
+        );
+    }
+    """
+    results = np.zeros(32, dtype=np.int32)
+    buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, size=results.nbytes)
+    kernel_dir = files("tractography.resources") / "kernels"
+    program = cl.Program(context, source).build(f"-I {kernel_dir}")
+    program.probe(queue, (len(results),), None, *domain.get_args(context), buffer)
+    cl.enqueue_copy(queue, results, buffer)
+    assert np.all(results == 1)

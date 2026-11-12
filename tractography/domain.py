@@ -23,6 +23,11 @@ _OPENCL_DIR = files("tractography.resources") / "kernels"
 class BaseDomain(ABC):
     """Abstract interface for domains used to constrain tractography.
 
+    ``contains()`` is the authoritative definition of domain membership.
+    ``boundary`` supplies the surface used for boundary sampling and endpoint
+    intersections; subclasses need not assume it encloses every point in the
+    domain.
+
     Subclasses provide their domain-specific OpenCL definitions through
     ``get_source()`` and should append ``super().get_source()`` to include the
     shared boundary sampler. Their ``get_args()`` implementations should also
@@ -67,10 +72,57 @@ class BaseDomain(ABC):
         self.boundary_cumulative_areas = np.ascontiguousarray(cumulative)
         self.n_boundary_triangles = len(faces)
 
+        # Build a compact binary BVH over the same non-degenerate triangles
+        # used by the boundary sampler. Leaves reference slots in
+        # boundary_indices, not the original mesh face array.
+        triangle_vertices = vertices[faces]
+        triangle_min = triangle_vertices.min(axis=1)
+        triangle_max = triangle_vertices.max(axis=1)
+        centroids = (triangle_min + triangle_max) * 0.5
+        node_min: list[np.ndarray | None] = []
+        node_max: list[np.ndarray | None] = []
+        node_data: list[tuple[int, int, int, int] | None] = []
+        ordered_triangles: list[int] = []
+        leaf_size = 4
+
+        def build_bvh(triangle_ids: np.ndarray) -> int:
+            node_id = len(node_data)
+            node_min.append(None)
+            node_max.append(None)
+            node_data.append(None)
+            bounds_min = triangle_min[triangle_ids].min(axis=0)
+            bounds_max = triangle_max[triangle_ids].max(axis=0)
+
+            if len(triangle_ids) <= leaf_size:
+                start = len(ordered_triangles)
+                ordered_triangles.extend(int(i) for i in triangle_ids)
+                node_data[node_id] = (-1, -1, start, len(triangle_ids))
+            else:
+                axis = int(np.argmax(bounds_max - bounds_min))
+                sorted_ids = triangle_ids[np.argsort(centroids[triangle_ids, axis])]
+                middle = len(sorted_ids) // 2
+                left = build_bvh(sorted_ids[:middle])
+                right = build_bvh(sorted_ids[middle:])
+                node_data[node_id] = (left, right, 0, 0)
+
+            node_min[node_id] = bounds_min
+            node_max[node_id] = bounds_max
+            return node_id
+
+        build_bvh(np.arange(len(faces), dtype=np.int32))
+        self.boundary_bvh_bounds_min = np.zeros((len(node_min), 4), dtype=clt.float)
+        self.boundary_bvh_bounds_max = np.zeros((len(node_max), 4), dtype=clt.float)
+        self.boundary_bvh_bounds_min[:, :3] = np.asarray(node_min)
+        self.boundary_bvh_bounds_max[:, :3] = np.asarray(node_max)
+        self.boundary_bvh_nodes = np.ascontiguousarray(node_data, dtype=clt.int)
+        self.boundary_bvh_triangles = np.ascontiguousarray(ordered_triangles, dtype=clt.uint)
+        self.n_boundary_bvh_nodes = len(node_data)
+
     def get_source(self) -> str:
-        """Return OpenCL definitions for the reusable boundary sampler."""
+        """Return OpenCL definitions for boundary sampling and the BVH type."""
         return r"""
         #include "utils/core.cl"
+        #include "utils/bvh.cl"
 
         typedef struct {
             __global const float4* vertices;
@@ -83,7 +135,9 @@ class BaseDomain(ABC):
             Boundary boundary,
             uint2* rng_state,
             float3* point,
-            float3* orientation)
+            float3* orientation,
+            uint* sampled_triangle,
+            float3* barycentric)
         {
             const float target = randu(rng_state);
             uint lower = 0;
@@ -97,6 +151,7 @@ class BaseDomain(ABC):
                 }
             }
             const uint triangle_id = min(lower, boundary.n_triangles - 1);
+            *sampled_triangle = triangle_id;
             const uint4 indices = boundary.indices[triangle_id];
             const float3 a = boundary.vertices[indices.x].xyz;
             const float3 b = boundary.vertices[indices.y].xyz;
@@ -104,6 +159,7 @@ class BaseDomain(ABC):
 
             const float root_u = sqrt(randu(rng_state));
             const float v = randu(rng_state);
+            *barycentric = (float3)(1.0f - root_u, root_u * (1.0f - v), root_u * v);
             const float3 sampled = (1.0f - root_u) * a
                 + root_u * (1.0f - v) * b
                 + root_u * v * c;
@@ -111,6 +167,7 @@ class BaseDomain(ABC):
             *orientation = -outward;
             *point = sampled + 1e-4f * (*orientation);
         }
+
         """
 
     def get_args(self, context: cl.Context) -> list[Any]:
@@ -121,30 +178,88 @@ class BaseDomain(ABC):
 
         Returns:
             Boundary vertices, triangle indices, normalized cumulative areas,
-            and triangle count, in kernel order.
+            triangle count, BVH bounds/nodes/triangle order, and BVH node count
+            in ``DOMAIN_ARGS`` order.
         """
         return [
             cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_vertices),
             cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_indices),
             cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_cumulative_areas),
             clt.uint(self.n_boundary_triangles),
+            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_bvh_bounds_min),
+            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_bvh_bounds_max),
+            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_bvh_nodes),
+            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_bvh_triangles),
+            clt.uint(self.n_boundary_bvh_nodes),
         ]
 
     @abstractmethod
     def contains(self, points: Points) -> ContainsResult:
-        """Return whether each world-space point belongs to the domain.
+        """Authoritatively determine whether world-space points are in-domain.
 
         Args:
             points: Array of points with shape ``(n_points, 3)``.
 
         Returns:
             Boolean array with one result per point.
+
+        Note:
+            Boundary geometry is for sampling and intersections. It does not
+            replace this membership test, since a domain's supplied boundary
+            may be open or may represent only part of its extent.
         """
         pass
 
 
+def _voxel_boundary_mesh(mask: np.ndarray, affine: np.ndarray) -> Trimesh:
+    """Build the exact surface of the union of occupied voxel cells.
+
+    Voxel centers have integer coordinates and each voxel occupies a unit
+    half-open cell. A face is emitted only where an occupied voxel neighbors
+    an empty voxel or the outside of the array.
+    """
+    face_definitions = (
+        ((-1, 0, 0), ((-1, -1, -1), (-1, -1, 1), (-1, 1, 1), (-1, 1, -1))),
+        ((1, 0, 0), ((1, -1, -1), (1, 1, -1), (1, 1, 1), (1, -1, 1))),
+        ((0, -1, 0), ((-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1))),
+        ((0, 1, 0), ((-1, 1, -1), (-1, 1, 1), (1, 1, 1), (1, 1, -1))),
+        ((0, 0, -1), ((-1, -1, -1), (-1, 1, -1), (1, 1, -1), (1, -1, -1))),
+        ((0, 0, 1), ((-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1))),
+    )
+
+    padded = np.pad(mask, 1, mode="constant", constant_values=False)
+    quads: list[np.ndarray] = []
+    for direction, corner_offsets in face_definitions:
+        neighbor_slices = tuple(
+            slice(1 + offset, 1 + offset + size)
+            for offset, size in zip(direction, mask.shape)
+        )
+        exposed_voxels = np.argwhere(mask & ~padded[neighbor_slices])
+        if len(exposed_voxels) == 0:
+            continue
+        offsets = np.asarray(corner_offsets, dtype=np.int64)
+        quads.append(2 * exposed_voxels[:, np.newaxis, :] + offsets)
+
+    doubled_corners = np.concatenate(quads, axis=0).reshape(-1, 3)
+    unique_corners, inverse_indices = np.unique(
+        doubled_corners, axis=0, return_inverse=True
+    )
+    quad_faces = inverse_indices.reshape(-1, 4)
+    triangles = np.concatenate(
+        (quad_faces[:, (0, 1, 2)], quad_faces[:, (0, 2, 3)]), axis=0
+    )
+    voxel_vertices = unique_corners.astype(np.float64) * 0.5
+    world_vertices = apply_affine(affine, voxel_vertices)
+    return Trimesh(vertices=world_vertices, faces=triangles, process=False)
+
+
 class Image(BaseDomain):
-    """Tracking domain defined by the nonzero voxels of a 3D image."""
+    """Tracking domain defined by the nonzero voxels of a 3D image.
+
+    Each voxel occupies the half-open cell ``[i - 0.5, i + 0.5)`` on each
+    index axis. The boundary mesh is the exposed-face surface of the union of
+    those cells. ``contains()`` remains the authoritative membership test.
+    """
 
     def __init__(self, image_data: SpatialImage):
         """Initialize the domain from a 3D spatial image.
@@ -174,10 +289,9 @@ class Image(BaseDomain):
         )
         if not np.any(self.values):
             raise ValueError("Image domain must contain at least one nonzero voxel.")
-        boundary = trimesh.voxel.ops.matrix_to_marching_cubes(  # type: ignore[attr-defined]
-            self.values.astype(bool), pitch=1.0
+        boundary = _voxel_boundary_mesh(
+            self.values.astype(bool), affine if affine is not None else np.eye(4)
         )
-        boundary.apply_transform(affine if affine is not None else np.eye(4))
         boundary.fix_normals(multibody=True)
         super().__init__(boundary)
 
@@ -189,6 +303,11 @@ class Image(BaseDomain):
             __global const uint4* domain_boundary_indices, \\
             __global const float* domain_boundary_cumulative_areas, \\
             uint domain_n_boundary_triangles, \\
+            __global const float4* domain_boundary_bvh_bounds_min, \\
+            __global const float4* domain_boundary_bvh_bounds_max, \\
+            __global const int4* domain_boundary_bvh_nodes, \\
+            __global const uint* domain_boundary_bvh_triangles, \\
+            uint domain_n_boundary_bvh_nodes, \\
             __global const int* domain_mask, \\
             const uint3 domain_dims, \\
             __global const float4* domain_inverse_affine
@@ -200,12 +319,22 @@ class Image(BaseDomain):
                 domain_boundary_cumulative_areas, \\
                 domain_n_boundary_triangles \\
             }; \\
+            BVH boundary_bvh = { \\
+                domain_boundary_vertices, \\
+                domain_boundary_indices, \\
+                domain_boundary_bvh_bounds_min, \\
+                domain_boundary_bvh_bounds_max, \\
+                domain_boundary_bvh_nodes, \\
+                domain_boundary_bvh_triangles, \\
+                domain_n_boundary_bvh_nodes \\
+            }; \\
             Domain d = { \\
-                boundary, domain_mask, domain_dims, domain_inverse_affine \\
+                boundary, boundary_bvh, domain_mask, domain_dims, domain_inverse_affine \\
             };
 
         typedef struct {
             Boundary boundary;
+            BVH boundary_bvh;
             __global const int* mask;
             uint3 dims;
             __global const float4* domain_inverse_affine;
@@ -220,7 +349,9 @@ class Image(BaseDomain):
                 dot(d.domain_inverse_affine[1], pos_h),
                 dot(d.domain_inverse_affine[2], pos_h),
                 1.0f);
-            int3 voxel = convert_int3(rint(voxel_h.xyz));
+            // Voxels occupy half-open cells [i - 0.5, i + 0.5), matching
+            // the exposed-face boundary generated by Image.
+            int3 voxel = convert_int3(floor(voxel_h.xyz + 0.5f));
 
             // Check if the voxel coordinates are within the image bounds.
             if (voxel.x < 0 || voxel.x >= d.dims.x ||
@@ -265,7 +396,7 @@ class Image(BaseDomain):
         """
 
         # Convert all points to homogeneous coordinates.
-        voxel = np.round(apply_affine(self.inverse_affine, points)).astype(int)
+        voxel = np.floor(apply_affine(self.inverse_affine, points) + 0.5).astype(int)
 
         # Check if the voxel coordinates are within the image bounds.
         x, y, z = voxel[:, :3].T
@@ -387,7 +518,16 @@ def seed(
         uint2 rng_state = rng_init(rng_seed, gid);
         float3 point;
         float3 orientation;
-        domain_sample_boundary(domain.boundary, &rng_state, &point, &orientation);
+            uint triangle_id;
+        float3 barycentric;
+        domain_sample_boundary(
+            domain.boundary,
+            &rng_state,
+            &point,
+            &orientation,
+            &triangle_id,
+            &barycentric
+        );
         locations[gid] = (float4)(point, 1.0f);
         orientations[gid] = (float4)(orientation, 0.0f);
     }

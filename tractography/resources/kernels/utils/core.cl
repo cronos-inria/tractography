@@ -51,6 +51,26 @@ inline int nearest_vertex_label(
     return best_label;
 }
 
+// Returns the index of the nearest vertex to a point, or -1 if there are no
+// vertices. Ties are resolved in favor of the first vertex in the array.
+inline int nearest_vertex_index(
+        __global const float4 *vertices,
+        uint n_vertices,
+        float3 point)
+{
+    float min_dist = INFINITY;
+    int best_index = -1;
+    for (uint i = 0; i < n_vertices; i++) {
+        float3 diff = vertices[i].xyz - point;
+        float dist2 = dot(diff, diff);
+        if (dist2 < min_dist) {
+            min_dist = dist2;
+            best_index = (int)i;
+        }
+    }
+    return best_index;
+}
+
 
 // ATOMIC_ADD_GLOBAL_FLOAT
 // Adds two values and atomically store the result in the
