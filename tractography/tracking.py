@@ -1,6 +1,8 @@
 from importlib.resources import files
 from string import Template
 
+from nibabel.nifti1 import Nifti1Image
+from nibabel.spatialimages import SpatialImage
 from nibabel.streamlines.tractogram import Tractogram
 import numpy as np
 import pyopencl as cl
@@ -10,6 +12,7 @@ from scipy.sparse import coo_matrix, csr_matrix
 from .algorithm import BaseAlgorithm
 from .domain import BaseDomain
 from .field import BaseField
+from .utils import normalize_odf
 
 
 _OPENCL_DIR = files("tractography.resources") / "kernels"
@@ -175,6 +178,213 @@ def tractogram(
     cl.enqueue_copy(_queue, lengths, lengths_buffer)
 
     return Tractogram([streamlines[i, :n, :3] for i, n in enumerate(lengths)], affine_to_rasmm=np.eye(4))
+
+
+def tod(
+    algorithm: BaseAlgorithm,
+    domain: BaseDomain,
+    field: BaseField,
+    image: SpatialImage,
+    n_seeds: int,
+    maximum_streamline_length: float = 300.0,
+) -> Nifti1Image:
+    """Estimate a track orientation distribution (TOD) as SH coefficients.
+
+    Seeds are sampled uniformly over the domain boundary and directed inward.
+    Each track contributes the real, symmetric SH representation of its
+    orientation at every integration step. The output grid and affine are
+    taken from ``image``. Each nonempty voxel is normalized to unit integral.
+
+    Args:
+        algorithm: Orientation-update algorithm and local model.
+        domain: Tracking domain and boundary used for seed generation.
+        field: Spatial field of local-model parameters.
+        image: Three-dimensional image describing the output grid and affine.
+        n_seeds: Number of boundary-seeded tracks to generate.
+        maximum_streamline_length: Maximum propagation distance, in the
+            coordinate units used by the domain and field.
+
+    Returns:
+        A NIfTI image with shape ``image.shape + (45,)`` containing normalized
+        real, symmetric SH coefficients for the track orientation distribution.
+
+    Raises:
+        ValueError: If the model and field are incompatible, seed count or
+            maximum length is invalid, or the output image is not 3D.
+
+    Note:
+        Requires a working OpenCL runtime unless the seed count or maximum
+        streamline length is zero.
+    """
+    if algorithm.local_model.n_parameters != field.n_parameters:
+        raise ValueError(
+            "Incompatible local model and field, they do not have the "
+            "same number of parameters: "
+            f"{algorithm.local_model.n_parameters} != {field.n_parameters}"
+        )
+    if not isinstance(n_seeds, (int, np.integer)) or n_seeds < 0:
+        raise ValueError("n_seeds must be a non-negative integer.")
+    if not np.isfinite(maximum_streamline_length) or maximum_streamline_length < 0:
+        raise ValueError("maximum_streamline_length must be finite and non-negative.")
+    if len(image.shape) != 3:
+        raise ValueError("The output image description must be 3D.")
+
+    output_shape = tuple(int(size) for size in image.shape)
+    affine = image.affine if image.affine is not None else np.eye(4)
+    inverse_affine = np.linalg.inv(affine).astype(clt.float)
+    raw_tod = np.zeros(output_shape + (45,), dtype=np.float32)
+
+    step_size = float(algorithm.step_size)
+    if not np.isfinite(step_size) or step_size <= 0:
+        raise ValueError("algorithm.step_size must be finite and positive.")
+    n_steps = int(np.floor(maximum_streamline_length / step_size))
+    if n_seeds == 0 or n_steps == 0:
+        header = image.header.copy()
+        header.set_data_dtype(np.float32)
+        return Nifti1Image(normalize_odf(raw_tod), affine, header=header)
+
+    context = cl.create_some_context(interactive=False)
+    queue = cl.CommandQueue(context)
+    source = domain.get_source() + field.get_source() + algorithm.get_source()
+    source += '#include "utils/spharm.cl"\n'
+    source += Template(r"""
+    __kernel void tod(
+        DOMAIN_ARGS,
+        FIELD_ARGS,
+        ALGORITHM_ARGS,
+        uint rng_seed,
+        uint n_seeds,
+        const uint4 output_dims,
+        __global const float4* output_inverse_affine,
+        __global float* coefficients)
+    {
+        const uint gid = get_global_id(0);
+        if (gid >= n_seeds) return;
+
+        DOMAIN_BUILD(domain);
+        FIELD_BUILD(field);
+        ALGORITHM_BUILD(algorithm);
+
+        uint2 rng_state = rng_init(rng_seed, gid);
+        float3 point;
+        float3 initial_orientation;
+        uint start_triangle;
+        float3 start_barycentric;
+        domain_sample_boundary(
+            domain.boundary,
+            &rng_state,
+            &point,
+            &initial_orientation,
+            &start_triangle,
+            &start_barycentric
+        );
+        float4 orientation = (float4)(initial_orientation, 0.0f);
+        float local_model[$N_PARAMETERS];
+        float ylm[45];
+        float ylm_dp[45];
+        float ylm_dt[45];
+        float voxel_coefficients[45] = {0.0f};
+        int3 previous_index = (int3)(-1, -1, -1);
+
+        for (uint step = 0; step < $N_STEPS; ++step) {
+            if (!domain_contains(domain, point)) break;
+            if (!field_evaluate(field, point, local_model)) break;
+
+            // Deposit the current direction in the output voxel, if the
+            // track point lies on the requested image grid.
+            const float4 point_h = (float4)(point, 1.0f);
+            const float3 voxel = (float3)(
+                dot(output_inverse_affine[0], point_h),
+                dot(output_inverse_affine[1], point_h),
+                dot(output_inverse_affine[2], point_h));
+            const int3 index = convert_int3(floor(voxel + 0.5f));
+            if (index.x >= 0 && index.x < output_dims.x &&
+                index.y >= 0 && index.y < output_dims.y &&
+                index.z >= 0 && index.z < output_dims.z) {
+                const float2 angles = cart2sph((float4)(orientation.xyz, 0.0f));
+                evaluate_sh(angles.x, angles.y, ylm, ylm_dp, ylm_dt);
+                if (index.x == previous_index.x &&
+                    index.y == previous_index.y &&
+                    index.z == previous_index.z) {
+                    for (uint i = 0; i < 45; ++i) {
+                        voxel_coefficients[i] += ylm[i];
+                    }
+                } else {
+                    if (previous_index.x >= 0) {
+                        const size_t previous_base =
+                            (((size_t)previous_index.x * output_dims.y + previous_index.y)
+                                * output_dims.z + previous_index.z) * 45;
+                        for (uint i = 0; i < 45; ++i) {
+                            atomic_add_global_float(
+                                coefficients + previous_base + i,
+                                voxel_coefficients[i]
+                            );
+                        }
+                    }
+                    const size_t base =
+                        (((size_t)index.x * output_dims.y + index.y) * output_dims.z + index.z) * 45;
+                    for (uint i = 0; i < 45; ++i) {
+                        voxel_coefficients[i] = ylm[i];
+                    }
+                    previous_index = index;
+                }
+            } else if (previous_index.x >= 0) {
+                const size_t previous_base =
+                    (((size_t)previous_index.x * output_dims.y + previous_index.y)
+                        * output_dims.z + previous_index.z) * 45;
+                for (uint i = 0; i < 45; ++i) {
+                    atomic_add_global_float(
+                        coefficients + previous_base + i,
+                        voxel_coefficients[i]
+                    );
+                }
+                previous_index = (int3)(-1, -1, -1);
+            }
+
+            orientation = algorithm_update_orientation(
+                algorithm, local_model, orientation, &rng_state);
+            if (!all(isfinite(orientation)) || length(orientation) < 0.5f) break;
+            point += algorithm.step_size * orientation.xyz;
+        }
+        if (previous_index.x >= 0) {
+            const size_t base =
+                (((size_t)previous_index.x * output_dims.y + previous_index.y)
+                    * output_dims.z + previous_index.z) * 45;
+            for (uint i = 0; i < 45; ++i) {
+                atomic_add_global_float(coefficients + base + i, voxel_coefficients[i]);
+            }
+        }
+    }
+    """).safe_substitute({
+        "N_PARAMETERS": field.n_parameters,
+        "N_STEPS": n_steps,
+    })
+
+    output_dims = np.asarray((*output_shape, 0), dtype=np.uint32)
+    inverse_affine_buffer = cl.Buffer(
+        context, READ_ONLY, hostbuf=np.ascontiguousarray(inverse_affine)
+    )
+    coefficients_buffer = cl.Buffer(
+        context,
+        cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR,
+        hostbuf=raw_tod,
+    )
+    args = domain.get_args(context) + field.get_args(context) + algorithm.get_args()
+    args += [
+        clt.uint(algorithm.get_rng_seed()),
+        clt.uint(n_seeds),
+        output_dims,
+        inverse_affine_buffer,
+        coefficients_buffer,
+    ]
+
+    program = cl.Program(context, source).build(f"-I {_OPENCL_DIR}")
+    program.tod(queue, (n_seeds,), None, *args)
+    cl.enqueue_copy(queue, raw_tod, coefficients_buffer)
+
+    header = image.header.copy()
+    header.set_data_dtype(np.float32)
+    return Nifti1Image(normalize_odf(raw_tod), affine, header=header)
 
 
 def connectome(
