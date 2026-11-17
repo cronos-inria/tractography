@@ -128,6 +128,59 @@ def test_tractogram_accepts_diffusion_algorithm():
 	)
 
 
+def test_tod_accumulates_boundary_seeded_track_orientations():
+	"""TOD returns normalized SH coefficients on the requested image grid."""
+	description = Nifti1Image(np.zeros((1, 1, 1), dtype=np.float32), np.eye(4))
+	domain = tg.domain.Image(
+		Nifti1Image(np.ones((1, 1, 1), dtype=np.uint8), np.eye(4))
+	)
+	field_data = np.zeros((1, 1, 1, 15), dtype=np.float32)
+	field_data[..., 0] = 1.0
+	field = tg.field.Image(Nifti1Image(field_data, np.eye(4)))
+	algorithm = tg.algorithm.Diffusion(
+		tg.local.RealSymmetricSphericalHarmonics(15),
+		step_size=0.1,
+		gamma=0.0,
+		noise_variance=0.0,
+		seed=1234,
+	)
+
+	result = tg.tracking.tod(
+		algorithm,
+		domain,
+		field,
+		description,
+		n_seeds=16,
+		maximum_streamline_length=0.3,
+	)
+
+	assert result.shape == (1, 1, 1, 45)
+	assert result.get_data_dtype() == np.dtype(np.float32)
+	assert np.isfinite(result.get_fdata()).all()
+	np.testing.assert_allclose(
+		result.get_fdata()[0, 0, 0, 0], 1.0 / np.sqrt(4.0 * np.pi), atol=1e-6
+	)
+
+
+def test_tod_zero_seeds_returns_empty_image_without_opencl():
+	"""Zero seeds produce a correctly shaped all-zero TOD image."""
+	description = Nifti1Image(np.zeros((2, 1, 1), dtype=np.float32), np.eye(4))
+	domain = tg.domain.Image(
+		Nifti1Image(np.ones((1, 1, 1), dtype=np.uint8), np.eye(4))
+	)
+	field = tg.field.Image(
+		Nifti1Image(np.ones((1, 1, 1, 1), dtype=np.float32), np.eye(4))
+	)
+	algorithm = tg.algorithm.Transport(tg.local.RealSymmetricSphericalHarmonics(1))
+
+	result = tg.tracking.tod(
+		algorithm, domain, field, description, n_seeds=0
+	)
+
+	assert result.shape == (2, 1, 1, 45)
+	np.testing.assert_array_equal(result.get_fdata(), 0.0)
+
+
 def test_connectome_returns_piecewise_linear_boundary_matrix():
 	"""The kernel deposits barycentric endpoint weights into a directed CSR."""
 	domain = tg.domain.Image(
