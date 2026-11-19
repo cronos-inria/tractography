@@ -1,19 +1,17 @@
 from __future__ import annotations
-from typing import Any, Callable, Final
+from typing import Final
 from dataclasses import dataclass
 
 from .core import Algorithm, BaseConfiguration
 
 @dataclass(frozen=True)
 class RegistryEntry:
-    """Registry entry for a tractography algorithm implementation.
+    """Registry entry for an algorithm's configuration type.
     
     Attributes:
         configuration: Configuration class for the algorithm.
-        tractogram: Algorithm-specific tractogram callable.
     """
     configuration: type[BaseConfiguration]
-    tractogram: Callable[..., Any]
 
 
 _REGISTRY: Final[dict[Algorithm, RegistryEntry]] = {}
@@ -22,25 +20,20 @@ _REGISTRY: Final[dict[Algorithm, RegistryEntry]] = {}
 def register(
     algorithm: Algorithm,
     configuration: type[BaseConfiguration],
-    tractogram: Callable[..., Any],
 ) -> None:
-    """Register algorithm implementations.
+    """Register an algorithm's legacy CLI configuration type.
     
     Args:
         algorithm: The algorithm enum value.
         configuration: Configuration class for the algorithm.
-        tractogram: Algorithm-specific tractogram callable.
     """
     if algorithm in _REGISTRY:
         raise ValueError(f"Tracker already registered for algorithm: {algorithm}")
-    _REGISTRY[algorithm] = RegistryEntry(
-        configuration=configuration,
-        tractogram=tractogram,
-    )
+    _REGISTRY[algorithm] = RegistryEntry(configuration=configuration)
 
 
 def resolve(algorithm: Algorithm) -> RegistryEntry:
-    """Resolve implementations for the given algorithm."""
+    """Resolve configuration metadata for the given algorithm."""
     try:
         return _REGISTRY[algorithm]
     except KeyError as e:

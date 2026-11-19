@@ -27,13 +27,6 @@ def new_read_only_buffer(data):
     return buffer
 
 
-def new_buffer(data):
-    """Create a new read and write OpenCL buffer from data"""
-    buffer = cl.Buffer(_context, cl.mem_flags.READ_WRITE, size=data.nbytes)
-    cl.enqueue_copy(_queue, buffer, np.ascontiguousarray(data), is_blocking=False)
-    return buffer
-
-
 def build_program(values, names) -> Program:
 
     if isinstance(names, str):
@@ -66,11 +59,5 @@ def copy_from_buffer(buffer, data):
     return cl.enqueue_copy(_queue, data, buffer, is_blocking=False)
 
 
-def run_program(program, args, n_threads):
-    return program.tractography(_queue, (n_threads,), None, *args)
-
-
-def run_tractogram(program, args, n_threads):
-    return program.tractogram(_queue, (n_threads,), None, *args)
 
 

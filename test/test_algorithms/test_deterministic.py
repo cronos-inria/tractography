@@ -6,6 +6,7 @@ import numpy as np
 
 import tractography as tg
 import test
+from test.test_algorithms import run_configured_tractogram
 from test.test_algorithms.exact_solutions import u0u3_coefficients
 
 
@@ -50,9 +51,7 @@ class TestDeterministic(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DETERMINISTIC)
-        tracto, _ = tg.algorithms.deterministic.tractogram(
-            nii, seeds, config
-        )
+        tracto = run_configured_tractogram(nii, seeds, config)
         streamlines = tracto.streamlines
 
         # Save the streamlines for QA.
@@ -71,7 +70,7 @@ class TestDeterministic(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.DETERMINISTIC)
-        tracto, _ = tg.algorithms.deterministic.tractogram(fod, seeds, config)
+        tracto = run_configured_tractogram(fod, seeds, config)
         streamlines = tracto.streamlines
 
         # Save the streamlines for QA.

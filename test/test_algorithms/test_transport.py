@@ -9,6 +9,7 @@ import scipy.interpolate as si
 import tractography as tg
 import test
 import test.data.tensor
+from test.test_algorithms import run_configured_tractogram
 
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
@@ -170,7 +171,7 @@ class TestTractogram(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        tractogram, _ = tg.algorithms.transport.tractogram(nii, seeds, config)
+        tractogram = run_configured_tractogram(nii, seeds, config)
 
         # In an isotropic field, transport tractography should produce only
         # straight lines.
@@ -187,7 +188,7 @@ class TestTractogram(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        tractogram, _ = tg.algorithms.transport.tractogram(tg.nifti.multiply(fod, wm), seeds, config)
+        tractogram = run_configured_tractogram(tg.nifti.multiply(fod, wm), seeds, config)
 
         # Streamlines should cover the whole cross, but not go outside of it.
         points = np.vstack([s[:-1] for s in tractogram.streamlines])
@@ -207,7 +208,7 @@ class TestTractogram(unittest.TestCase):
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.TRANSPORT)
         config.inverse_curvature = 10.0
-        tractogram, _ = tg.algorithms.transport.tractogram(fod, seeds, config)
+        tractogram = run_configured_tractogram(fod, seeds, config)
         streamlines = tractogram.streamlines
 
     def test_circle(self):
@@ -233,7 +234,7 @@ class TestTractogram(unittest.TestCase):
         config.streamline.length.maximum = 100
         config.step_size = 1e-4
         config.inverse_curvature = 50.0
-        tractogram, _ = tg.algorithms.transport.tractogram(fod, seeds, config)
+        tractogram = run_configured_tractogram(fod, seeds, config)
         streamlines = tractogram.streamlines
 
         # The streamlines should run until the maximum lenght is reached.
