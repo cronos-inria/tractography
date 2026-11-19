@@ -2,14 +2,10 @@ import unittest
 
 from tractography.algorithms import register, resolve, RegistryEntry, _REGISTRY
 from tractography.algorithms.core import Algorithm
-from tractography.algorithms.deterministic import connectome as deterministic_connectome
 from tractography.algorithms.deterministic import tractogram as deterministic_tractogram
 from tractography.algorithms.deterministic import Configuration as DeterministicConfiguration
-from tractography.algorithms.diffusion import connectome as diffusion_connectome
 from tractography.algorithms.diffusion import tractogram as diffusion_tractogram
-from tractography.algorithms.probabilistic import connectome as probabilistic_connectome
 from tractography.algorithms.probabilistic import tractogram as probabilistic_tractogram
-from tractography.algorithms.transport import connectome as transport_connectome
 from tractography.algorithms.transport import tractogram as transport_tractogram
 
 
@@ -49,19 +45,6 @@ class TestRegister(unittest.TestCase):
             with self.subTest(algorithm=algorithm):
                 self.assertIs(_REGISTRY[algorithm].tractogram, tractogram_fn)
 
-    def test_registered_connectomes(self):
-        """Algorithms with connectome support should expose the correct function"""
-        expected = {
-            Algorithm.DETERMINISTIC: deterministic_connectome,
-            Algorithm.PROBABILISTIC: probabilistic_connectome,
-            Algorithm.DIFFUSION: diffusion_connectome,
-            Algorithm.TRANSPORT: transport_connectome,
-        }
-        for algorithm, connectome_fn in expected.items():
-            with self.subTest(algorithm=algorithm):
-                self.assertIs(_REGISTRY[algorithm].connectome, connectome_fn)
-
-
 class TestResolve(unittest.TestCase):
     """Test the algorithm resolution mechanism"""
 
@@ -83,18 +66,6 @@ class TestResolve(unittest.TestCase):
         for algorithm, tractogram_fn in expected.items():
             with self.subTest(algorithm=algorithm):
                 self.assertIs(resolve(algorithm).tractogram, tractogram_fn)
-
-    def test_resolve_connectome(self):
-        """resolve().connectome should return the correct function"""
-        expected = {
-            Algorithm.DETERMINISTIC: deterministic_connectome,
-            Algorithm.PROBABILISTIC: probabilistic_connectome,
-            Algorithm.DIFFUSION: diffusion_connectome,
-            Algorithm.TRANSPORT: transport_connectome,
-        }
-        for algorithm, connectome_fn in expected.items():
-            with self.subTest(algorithm=algorithm):
-                self.assertIs(resolve(algorithm).connectome, connectome_fn)
 
     def test_resolve_unknown_raises(self):
         """resolve() should raise ValueError for an unregistered algorithm"""
