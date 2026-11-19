@@ -72,16 +72,24 @@ To generate streamlines from the Python package using the diffusion (probabilist
    import tractography as tg
    import nibabel as nib
 
-   # Load the data using nibabel.
-   fod_nii = nib.load("fod.nii.gz")
-   fod = fod_nii.get_fdata()
-   wm_nii = nib.load("wm.nii.gz")
-   wm = wm_nii.get_fdata()
+      # Load the FOD and white-matter mask as images.
+      fod = nib.load("fod.nii.gz")
+      wm = nib.load("wm.nii.gz")
 
-   # Generate the seeds by sampling the FOD.
-   fod = tg.core.apply_mask(fod, fod_nii.affine, wm, wm_nii.affine)
-   seeds = tg.seeds.from_fod(fod, fod_nii.affine, 50000)
+      # Generate seeds and configure a tracking algorithm.
+      seeds = tg.seeds.from_mask(wm, 50000)
+      model = tg.local.RealSymmetricSphericalHarmonics(fod.shape[-1])
+      algorithm = tg.algorithm.Diffusion(
+         model, step_size=0.001, gamma=1.0, noise_variance=0.1
+      )
 
-   # Run the tractography algorithm to generate streamlines.
-   config = tg.configuration.load(tg.Algorithm.DIFFUSION)  # The default algorithm is diffusion
-   streamlines = tg.tractogram(fod, fod_nii.affine, seeds, config)
+      # Run tractography. The algorithm is passed directly, with no config object.
+      streamlines = tg.tractogram(
+         fod,
+         seeds,
+         wm,
+         algorithm,
+         save_at=0.25,
+         maximum_streamline_length=300.0,
+         batch_size=50000,
+      )

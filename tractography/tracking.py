@@ -393,6 +393,7 @@ def connectome(
     field: BaseField,
     n_seeds: int,
     maximum_streamline_length: float = 300.0,
+    minimum_streamline_length: float = 0.0,
 ) -> csr_matrix:
     """Estimate an asymmetric, piecewise-linear boundary connectome.
 
@@ -413,6 +414,8 @@ def connectome(
         n_seeds: Number of boundary-seeded tracks to generate.
         maximum_streamline_length: Maximum propagation distance, in the
             coordinate units used by the domain and field.
+        minimum_streamline_length: Minimum distance actually propagated for a
+            track to contribute. Defaults to zero.
 
     Returns:
         A directed floating-point ``(n_vertices, n_vertices)`` SciPy CSR
@@ -438,6 +441,12 @@ def connectome(
         raise ValueError("n_seeds must be a non-negative integer.")
     if not np.isfinite(maximum_streamline_length) or maximum_streamline_length < 0:
         raise ValueError("maximum_streamline_length must be finite and non-negative.")
+    if not np.isfinite(minimum_streamline_length) or minimum_streamline_length < 0:
+        raise ValueError("minimum_streamline_length must be finite and non-negative.")
+    if minimum_streamline_length > maximum_streamline_length:
+        raise ValueError(
+            "minimum_streamline_length must not exceed maximum_streamline_length."
+        )
 
     n_vertices = len(domain.boundary.vertices)
     if n_seeds == 0 or n_vertices == 0:
@@ -460,6 +469,7 @@ def connectome(
         ALGORITHM_ARGS,
         uint rng_seed,
         uint n_seeds,
+        float minimum_streamline_length,
         __global int* contribution_rows,
         __global int* contribution_columns,
         __global float* contribution_weights)
@@ -493,6 +503,7 @@ def connectome(
         uint hit_triangle = 0;
         float3 hit_barycentric = (float3)(0.0f);
         float3 previous_point = point;
+        uint tracked_steps = 0;
         for (uint step = 0; step < $N_STEPS; ++step) {
             // Check before evaluating or updating. If this is outside, the
             // previous/current pair is the segment that crossed the domain.
@@ -509,7 +520,10 @@ def connectome(
 
             previous_point = point;
             point += algorithm.step_size * orientation;
+            tracked_steps++;
         }
+
+        if (tracked_steps * algorithm.step_size < minimum_streamline_length) return;
 
         // Check the final segment regardless of whether tracking stopped at
         // the domain edge, the field, an invalid orientation, or the step cap.
@@ -560,6 +574,7 @@ def connectome(
     args += [
         clt.uint(algorithm.get_rng_seed()),
         clt.uint(n_seeds),
+        clt.float(minimum_streamline_length),
         rows_buffer,
         columns_buffer,
         weights_buffer,

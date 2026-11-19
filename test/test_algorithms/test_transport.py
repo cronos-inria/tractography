@@ -117,7 +117,23 @@ class TestExactSolutions(unittest.TestCase):
         config.inverse_curvature = 1.0
         config.streamline.length.minimum = 0.0
         config.streamline.length.maximum = 1.0
-        streamline = np.array(tg.tractogram(fod, seeds, config).streamlines[0])
+        tracking_algorithm = tg.algorithm.Transport(
+            tg.local.RealSymmetricSphericalHarmonics(n_coefficients),
+            step_size=config.step_size,
+            gamma=config.inverse_curvature,
+        )
+        streamline = np.array(
+            tg.tractogram(
+                fod,
+                seeds,
+                None,
+                tracking_algorithm,
+                save_at=config.save_at,
+                maximum_streamline_length=config.streamline.length.maximum,
+                minimum_streamline_length=config.streamline.length.minimum,
+                batch_size=config.batch_size,
+            ).streamlines[0]
+        )
 
         # Build the reference trajectory by integrating with euler_intrinsic.
         # The kernel updates orientation *before* advancing position, so the

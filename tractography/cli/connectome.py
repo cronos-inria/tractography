@@ -1,106 +1,109 @@
-"""Entry-point for the connectome command of the CLI
+"""File-based entry point for the connectome command."""
 
-This module implements the connectome subcommand of the tractography CLI. It
-allows the user to generate connectivity matrices from files.
-
-"""
-
-import argparse
 from pathlib import Path
+from typing import cast
 
 import nibabel as nib
+from nibabel.nifti1 import Nifti1Image
 import numpy as np
+from scipy.sparse import csr_matrix, save_npz
 
 import tractography as tg
+from . import utils as cli_utils
 
 
 _ALGORITHM = tg.Algorithm.TRANSPORT
-
+_N_SEEDS = 1_000_000
+_DISTANCE_UPPER_BOUND = 4.0
+_MAXIMUM_STREAMLINE_LENGTH = 300.0
+_MINIMUM_STREAMLINE_LENGTH = 0.0
 
 _DESCRIPTION = """
-Perform diffusion magnetic resonance imaging tractography but save only the
-connectome instead of the full streamlines. The connectome is saved as a .npz file 
-containing 'matrix' and 'labels' arrays.
+Generate a connectome from a local-model image. An optional segmentation
+aggregates the directed boundary-vertex connectome by region label.
 """
-
-_HELP = """
-generate a structural connectome
-"""
-
-_ALGORITHM_HELP = f"""
-the algorithm used for tractography (default: {_ALGORITHM})
-"""
-
-_IMAGE_HELP = """
-the filename of the image on which to perform tractography
-"""
-
-_SEGMENTATION_HELP = """
-the filename of the segmentation image containing brain region labels
-"""
-
-_CONNECTOME_HELP = """
-the filename of the generated connectome (saved as a .npz file containing 'matrix' and 'labels' arrays)
-"""
-
-_MASK_HELP = """
-the filename of the mask used for tractography
-"""
+_HELP = "generate a structural connectome"
 
 
 def main(
-    image_path: Path,
-    segmentation_path: Path,
+    field_path: Path,
     connectome_path: Path,
-    n_seeds: int,
-    algorithm: tg.Algorithm = tg.Algorithm.TRANSPORT,
-    **kwargs,
-):
-    """Entry-point of the tractography CLI"""
-
-    # Load the default config and set user parameters.
-    config = tg.configuration.load(algorithm)
-    tg.cli.utils.set_tractography_config(config, kwargs)
-
-    # Load the FOD image.
-    fod = nib.load(image_path)
-
-    # Apply an optional global mask (e.g., brain mask) to the FOD.
-    if "mask" in kwargs and kwargs["mask"] is not None:
-        mask_nii = nib.load(kwargs["mask"])
-        fod = tg.nifti.multiply(fod, mask_nii)
-
-    # Load the volumetric segmentation.
-    segmentation = nib.load(segmentation_path)
-
-    # Generate the connectome.
-    # connectome() handles seeding, tracking, and mapping internally.
-    matrix, labels = tg.connectome(fod, segmentation, n_seeds, config)
-
-    # Save the connectome.
-    np.savez(connectome_path, matrix=matrix, labels=labels)
+    n_seeds: int = _N_SEEDS,
+    domain_path: Path | None = None,
+    algorithm: tg.Algorithm = _ALGORITHM,
+    segmentation_path: Path | None = None,
+    distance_upper_bound: float = _DISTANCE_UPPER_BOUND,
+    maximum_streamline_length: float = _MAXIMUM_STREAMLINE_LENGTH,
+    minimum_streamline_length: float = _MINIMUM_STREAMLINE_LENGTH,
+) -> None:
+    """Load file inputs, call :func:`tractography.connectome`, and save output."""
+    field = cast(Nifti1Image, nib.loadsave.load(field_path))
+    domain = (
+        cast(Nifti1Image, nib.loadsave.load(domain_path))
+        if domain_path is not None
+        else None
+    )
+    segmentation = (
+        cast(Nifti1Image, nib.loadsave.load(segmentation_path))
+        if segmentation_path is not None
+        else None
+    )
+    tracking_algorithm = cli_utils.make_tracking_algorithm(field, algorithm)
+    matrix, labels = tg.connectome(
+        field,
+        n_seeds,
+        domain,
+        tracking_algorithm,
+        segmentation,
+        distance_upper_bound=distance_upper_bound,
+        maximum_streamline_length=maximum_streamline_length,
+        minimum_streamline_length=minimum_streamline_length,
+    )
+    save_npz(connectome_path, csr_matrix(matrix))
+    if segmentation is not None:
+        np.save(connectome_path.with_suffix(".labels.npy"), labels)
 
 
 def add_parser(subparsers):
-    """Add the subparser for the connectome subcommand"""
-    subparser = subparsers.add_parser(
+    """Register the connectome command and its file-based arguments."""
+    parser = subparsers.add_parser(
         "connectome", description=_DESCRIPTION, help=_HELP
     )
-    subparser.add_argument("image_path", type=Path, help=_IMAGE_HELP)
-    subparser.add_argument("segmentation_path", type=Path, help=_SEGMENTATION_HELP)
-    subparser.add_argument("connectome_path", type=Path, help=_CONNECTOME_HELP)
-    subparser.add_argument("--mask", type=Path, help=_MASK_HELP)
-    tg.cli.utils.add_n_seeds_argument(subparser)
-    subparser.add_argument(
+    parser.add_argument("field_path", type=Path, help="4D local-model NIfTI image")
+    parser.add_argument("connectome_path", type=Path, help="output connectome .npz")
+    cli_utils.add_n_seeds_argument(parser)
+    cli_utils.add_domain_argument(parser)
+    parser.add_argument(
         "--algorithm",
         type=tg.Algorithm,
         default=_ALGORITHM,
         choices=list(tg.Algorithm),
-        help=_ALGORITHM_HELP,
+        help=f"tracking algorithm (default: {_ALGORITHM})",
     )
-
-    # Add the common configuration options.
-    tg.cli.utils.add_tractography_config(subparser)
-
-    subparser.set_defaults(func=main)
-    return subparser
+    parser.add_argument(
+        "--segmentation", dest="segmentation_path", type=Path,
+        help="optional 3D region-label NIfTI image",
+    )
+    parser.add_argument(
+        "--distance-upper-bound",
+        dest="distance_upper_bound",
+        type=float,
+        default=_DISTANCE_UPPER_BOUND,
+        help="maximum distance for assigning boundary vertices to labels",
+    )
+    parser.add_argument(
+        "--maximum-streamline-length",
+        dest="maximum_streamline_length",
+        type=float,
+        default=_MAXIMUM_STREAMLINE_LENGTH,
+        help="maximum propagation distance per track",
+    )
+    parser.add_argument(
+        "--minimum-streamline-length",
+        dest="minimum_streamline_length",
+        type=float,
+        default=_MINIMUM_STREAMLINE_LENGTH,
+        help="minimum propagated distance for a track to contribute",
+    )
+    parser.set_defaults(func=main)
+    return parser
