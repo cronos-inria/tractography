@@ -1,32 +1,8 @@
 from __future__ import annotations
-from typing import Any, Optional, Protocol, Tuple, TypeVar, runtime_checkable
+from typing import Any, Callable, Final
 from dataclasses import dataclass
-from typing import Callable, Final
-
-from nibabel.nifti1 import Nifti1Image
-from nibabel.streamlines.tractogram import Tractogram
 
 from .core import Algorithm, BaseConfiguration
-
-# TypeVar for cache that allows flexible algorithm-specific cache types
-TCache = TypeVar("TCache")
-
-
-@runtime_checkable
-class TractogramCallable(Protocol[TCache]):
-    """Callable protocol for tractogram functions.
-    
-    A tractogram function takes FOD/ODF data, seed points, configuration,
-    and an optional cache, returning streamlines and the cache for reuse.
-    """
-
-    def __call__(
-        self,
-        fod: Nifti1Image,
-        seeds: list,  # list[Seed], but avoid circular import
-        config: BaseConfiguration,
-        cache: TCache | None = None,
-    ) -> Tuple[Tractogram, TCache]: ...
 
 @dataclass(frozen=True)
 class RegistryEntry:
@@ -34,13 +10,10 @@ class RegistryEntry:
     
     Attributes:
         configuration: Configuration class for the algorithm.
-        tractogram: Tractogram function conforming to TractogramCallable protocol.
-            Signature: (fod: Nifti1Image, seeds: list[Seed], config, cache=None) -> (Tractogram, cache)
-        connectome: Optional connectome function for generating connectivity matrices.
+        tractogram: Algorithm-specific tractogram callable.
     """
     configuration: type[BaseConfiguration]
-    tractogram: TractogramCallable[Any]
-    connectome: Optional[Callable] = None
+    tractogram: Callable[..., Any]
 
 
 _REGISTRY: Final[dict[Algorithm, RegistryEntry]] = {}
@@ -49,23 +22,20 @@ _REGISTRY: Final[dict[Algorithm, RegistryEntry]] = {}
 def register(
     algorithm: Algorithm,
     configuration: type[BaseConfiguration],
-    tractogram: TractogramCallable[Any],
-    connectome: Optional[Callable] = None,
+    tractogram: Callable[..., Any],
 ) -> None:
     """Register algorithm implementations.
     
     Args:
         algorithm: The algorithm enum value.
         configuration: Configuration class for the algorithm.
-        tractogram: Tractogram function conforming to TractogramCallable protocol.
-        connectome: Optional callable for connectome computation.
+        tractogram: Algorithm-specific tractogram callable.
     """
     if algorithm in _REGISTRY:
         raise ValueError(f"Tracker already registered for algorithm: {algorithm}")
     _REGISTRY[algorithm] = RegistryEntry(
         configuration=configuration,
         tractogram=tractogram,
-        connectome=connectome,
     )
 
 
