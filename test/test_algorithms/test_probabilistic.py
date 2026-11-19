@@ -6,11 +6,28 @@ import numpy as np
 
 import tractography as tg
 import test.data
+from test.test_algorithms.exact_solutions import u0u3_coefficients
 
 
 _TEST_RESULTS_DIR = (
     Path(__file__).parents[2] / "test-results" / "algorithms" / "probabilistic"
 )
+
+
+class TestExactSolutions(unittest.TestCase):
+    def test_exact_zero_angle_limit(self):
+        """A zero-radius sampling cap leaves a unit orientation unchanged."""
+        algorithm = tg.algorithm.Probabilistic(
+            tg.local.RealSymmetricSphericalHarmonics(45),
+            max_angle=0.0,
+            seed=0,
+        )
+        initial = np.asarray([tg.core.sph2cart(0.5, 0.12, 1.0)])
+        coefficients = u0u3_coefficients()[np.newaxis, :]
+
+        result = tg.algorithm.update_orientation(algorithm, coefficients, initial)
+
+        np.testing.assert_allclose(result, initial, atol=1e-6)
 
 
 class TestProbabilistic(unittest.TestCase):

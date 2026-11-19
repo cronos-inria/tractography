@@ -6,11 +6,30 @@ import numpy as np
 
 import tractography as tg
 import test
+from test.test_algorithms.exact_solutions import u0u3_coefficients
 
 
 _TEST_RESULTS_DIR = (
     Path(__file__).parents[2] / "test-results" / "algorithms" / "deterministic"
 )
+
+
+class TestExactSolutions(unittest.TestCase):
+    def test_exact_cross_term_maximum(self):
+        """The OpenCL update converges to the analytic maximum of 1 + eps*x*z."""
+        algorithm = tg.algorithm.Deterministic(
+            tg.local.RealSymmetricSphericalHarmonics(45),
+            max_iterations=30,
+            tolerance=1e-6,
+            max_step_size=0.5,
+        )
+        initial = np.asarray([tg.core.sph2cart(0.5, 0.12, 1.0)])
+        coefficients = u0u3_coefficients()[np.newaxis, :]
+
+        result = tg.algorithm.update_orientation(algorithm, coefficients, initial)
+
+        expected = np.asarray([1.0, 0.0, 1.0]) / np.sqrt(2.0)
+        np.testing.assert_allclose(result[0], expected, atol=1e-3)
 
 
 class TestDeterministic(unittest.TestCase):

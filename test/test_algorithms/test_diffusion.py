@@ -6,6 +6,67 @@ import numpy as np
 
 import tractography as tg
 import test.data.tensor
+from test.test_algorithms.exact_solutions import (
+    u0u3_coefficients,
+    u0u3_reference,
+)
+
+
+class TestExactSolutions(unittest.TestCase):
+    def test_exact_zero_noise_solution(self):
+        """With zero noise, diffusion follows the analytic cross-term drift."""
+        epsilon = 0.3
+        n_coefficients = 45
+        coefficients = u0u3_coefficients(epsilon, n_coefficients)
+        fod_data = np.broadcast_to(
+            coefficients, (1, 1, 1, n_coefficients)
+        ).copy()
+        affine = np.diag((1000.0, 1000.0, 1000.0, 1.0))
+        affine[:3, 3] = -0.5
+        fod = nib.Nifti1Image(fod_data, affine)
+
+        theta_0 = 0.12
+        phi_0 = 0.5
+        seed_position = np.asarray([10.0, 10.0, 10.0])
+        orientation = np.asarray(tg.core.sph2cart(phi_0, theta_0, 1.0))
+        seeds = [tg.seeds.Seed(seed_position, orientation)]
+
+        step_size = 0.001
+        maximum_length = 1.0
+        algorithm = tg.algorithm.Diffusion(
+            tg.local.RealSymmetricSphericalHarmonics(n_coefficients),
+            step_size=step_size,
+            gamma=1.0,
+            noise_variance=0.0,
+            seed=0,
+        )
+        streamlines = tg.tractogram(
+            fod,
+            seeds,
+            algorithm=algorithm,
+            save_at=step_size,
+            maximum_streamline_length=maximum_length,
+            minimum_streamline_length=0.0,
+            batch_size=1,
+        ).streamlines
+        streamline = np.asarray(streamlines[0])
+
+        reference_orientations = u0u3_reference(
+            step_size,
+            1.0,
+            theta_0,
+            phi_0,
+            epsilon,
+            len(streamline),
+        )
+        expected = np.empty_like(streamline)
+        expected[0] = seed_position
+        for index in range(1, len(streamline)):
+            expected[index] = (
+                expected[index - 1] + step_size * reference_orientations[index]
+            )
+
+        np.testing.assert_array_almost_equal(streamline, expected, decimal=3)
 
 
 class TestTractogram(unittest.TestCase):
