@@ -250,6 +250,12 @@ def _voxel_boundary_mesh(mask: np.ndarray, affine: np.ndarray) -> Trimesh:
     )
     voxel_vertices = unique_corners.astype(np.float64) * 0.5
     world_vertices = apply_affine(affine, voxel_vertices)
+
+    # Reverse the winding of the triangles if the affine includes a
+    # reflection (negative determinant).
+    if np.linalg.det(affine[:3, :3]) < 0:
+        triangles = triangles[:, [0, 2, 1]]
+
     return Trimesh(vertices=world_vertices, faces=triangles, process=False)
 
 
@@ -292,7 +298,11 @@ class Image(BaseDomain):
         boundary = _voxel_boundary_mesh(
             self.values.astype(bool), affine if affine is not None else np.eye(4)
         )
-        boundary.fix_normals(multibody=True)
+        
+        # Do not call fix_normals here. The voxel-face construction already
+        # determines the correct orientation relative to occupied voxels.
+        # Generic multibody repair can incorrectly reverse cavity surfaces.
+  
         super().__init__(boundary)
 
     def get_source(self) -> str:
