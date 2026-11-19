@@ -6,6 +6,7 @@ import numpy as np
 
 import tractography as tg
 import test.data
+from test.test_algorithms import run_configured_tractogram
 from test.test_algorithms.exact_solutions import u0u3_coefficients
 
 
@@ -48,9 +49,7 @@ class TestProbabilistic(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.PROBABILISTIC)
-        tracto, _ = tg.algorithms.probabilistic.tractogram(
-            nii, seeds, config
-        )
+        tracto = run_configured_tractogram(nii, seeds, config)
         streamlines = tracto.streamlines
 
         # Save the streamlines for QA.
@@ -69,7 +68,7 @@ class TestProbabilistic(unittest.TestCase):
 
         # Generate the tractogram.
         config = tg.configuration.load(tg.Algorithm.PROBABILISTIC)
-        tracto, _ = tg.algorithms.probabilistic.tractogram(fod, seeds, config)
+        tracto = run_configured_tractogram(fod, seeds, config)
         streamlines = tracto.streamlines
 
         # Save the streamlines for QA.
