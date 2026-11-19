@@ -4,16 +4,13 @@ from tractography.algorithms import register, resolve, RegistryEntry, _REGISTRY
 from tractography.algorithms.core import Algorithm
 from tractography.algorithms.deterministic import connectome as deterministic_connectome
 from tractography.algorithms.deterministic import tractogram as deterministic_tractogram
-from tractography.algorithms.deterministic import histogram as deterministic_histogram, Configuration as DeterministicConfiguration
+from tractography.algorithms.deterministic import Configuration as DeterministicConfiguration
 from tractography.algorithms.diffusion import connectome as diffusion_connectome
 from tractography.algorithms.diffusion import tractogram as diffusion_tractogram
-from tractography.algorithms.diffusion import histogram as diffusion_histogram
 from tractography.algorithms.probabilistic import connectome as probabilistic_connectome
 from tractography.algorithms.probabilistic import tractogram as probabilistic_tractogram
-from tractography.algorithms.probabilistic import histogram as probabilistic_histogram
 from tractography.algorithms.transport import connectome as transport_connectome
 from tractography.algorithms.transport import tractogram as transport_tractogram
-from tractography.algorithms.transport import histogram as transport_histogram
 
 
 class TestRegister(unittest.TestCase):
@@ -34,7 +31,11 @@ class TestRegister(unittest.TestCase):
     def test_duplicate_registration_raises(self):
         """Registering the same algorithm twice should raise ValueError"""
         with self.assertRaises(ValueError):
-            register(Algorithm.DETERMINISTIC, DeterministicConfiguration, deterministic_tractogram, deterministic_histogram)
+            register(
+                Algorithm.DETERMINISTIC,
+                DeterministicConfiguration,
+                deterministic_tractogram,
+            )
 
     def test_registered_tractograms(self):
         """Each algorithm should map to the correct tractogram function"""
@@ -47,18 +48,6 @@ class TestRegister(unittest.TestCase):
         for algorithm, tractogram_fn in expected.items():
             with self.subTest(algorithm=algorithm):
                 self.assertIs(_REGISTRY[algorithm].tractogram, tractogram_fn)
-
-    def test_registered_histograms(self):
-        """Each algorithm should map to the correct histogram function"""
-        expected = {
-            Algorithm.DETERMINISTIC: deterministic_histogram,
-            Algorithm.PROBABILISTIC: probabilistic_histogram,
-            Algorithm.DIFFUSION: diffusion_histogram,
-            Algorithm.TRANSPORT: transport_histogram,
-        }
-        for algorithm, histogram_fn in expected.items():
-            with self.subTest(algorithm=algorithm):
-                self.assertIs(_REGISTRY[algorithm].histogram, histogram_fn)
 
     def test_registered_connectomes(self):
         """Algorithms with connectome support should expose the correct function"""
@@ -94,18 +83,6 @@ class TestResolve(unittest.TestCase):
         for algorithm, tractogram_fn in expected.items():
             with self.subTest(algorithm=algorithm):
                 self.assertIs(resolve(algorithm).tractogram, tractogram_fn)
-
-    def test_resolve_histogram(self):
-        """resolve().histogram should return the correct function"""
-        expected = {
-            Algorithm.DETERMINISTIC: deterministic_histogram,
-            Algorithm.PROBABILISTIC: probabilistic_histogram,
-            Algorithm.DIFFUSION: diffusion_histogram,
-            Algorithm.TRANSPORT: transport_histogram,
-        }
-        for algorithm, histogram_fn in expected.items():
-            with self.subTest(algorithm=algorithm):
-                self.assertIs(resolve(algorithm).histogram, histogram_fn)
 
     def test_resolve_connectome(self):
         """resolve().connectome should return the correct function"""

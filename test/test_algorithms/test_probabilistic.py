@@ -8,38 +8,9 @@ import tractography as tg
 import test.data
 
 
-_OPENCL_DIR = Path(__file__).parents[2] / "src"
 _TEST_RESULTS_DIR = (
     Path(__file__).parents[2] / "test-results" / "algorithms" / "probabilistic"
 )
-
-
-class TestProbabilisticHistogram(unittest.TestCase):
-
-    def setUp(self):
-        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    def test_cross(self):
-
-        fod, wm, _ = test.data.cross()
-        config = tg.configuration.load(tg.Algorithm.PROBABILISTIC)
-        nib.save(wm, _TEST_RESULTS_DIR / "histogram-cross-wm.nii.gz")
-        nib.save(fod, _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz")
-
-        histogram = tg.algorithms.probabilistic.histogram(
-            fod.get_fdata(), fod.affine, fod.get_fdata(), fod.affine, 10000, config
-        )
-        nib.save(
-            nib.Nifti1Image(histogram, fod.affine),
-            _TEST_RESULTS_DIR / "histogram-cross-histogram.nii.gz",
-        )
-
-        # The histogram and the FOD should be very similar. The value of 0.05 is
-        # arbitrary.
-        self.assertTrue(
-            np.linalg.norm(histogram - fod.get_fdata())
-            / wm.get_fdata().size < 0.05
-        )
 
 
 class TestProbabilistic(unittest.TestCase):

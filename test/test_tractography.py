@@ -20,30 +20,30 @@ _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 class TestTOD(unittest.TestCase):
     """Test the tg.tod function"""
 
-    def test_simple(self):
+    def test_tod_with_explicit_domain_and_algorithm(self):
         """Test the simplest use case"""
 
         fod, seed_mask, _ = test.data.cross()
         n_seeds = 32
         config = tg.configuration.load(tg.Algorithm.DIFFUSION)
         tracking_algorithm = tg._algorithm_from_config(fod, config)
-        histogram = tg.tod(
+        tod = tg.tod(
             fod,
             n_seeds,
             seed_mask,
             tracking_algorithm,
             maximum_streamline_length=20.0,
         )
-        histogram_data = histogram.get_fdata()
-        self.assertEqual(histogram.shape, fod.shape[:3] + (45,))
-        self.assertTrue(np.isfinite(histogram_data).all())
-        populated = histogram_data[..., 0] != 0
+        tod_data = tod.get_fdata()
+        self.assertEqual(tod.shape, fod.shape[:3] + (45,))
+        self.assertTrue(np.isfinite(tod_data).all())
+        populated = tod_data[..., 0] != 0
         self.assertTrue(np.any(populated))
         np.testing.assert_allclose(
-            histogram_data[..., 0][populated], 1.0 / np.sqrt(4.0 * np.pi)
+            tod_data[..., 0][populated], 1.0 / np.sqrt(4.0 * np.pi)
         )
 
-    def test_image_defaults(self):
+    def test_tod_from_image_field_uses_defaults(self):
         fod, _, _ = test.data.cross()
         result = tg.tod(
             tg.field.Image(fod), n_seeds=16, maximum_streamline_length=2.0
