@@ -43,3 +43,4 @@ extra_css:
 
 markdown_extensions:
   - admonition
+  - pymdownx.snippets

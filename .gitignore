@@ -166,3 +166,4 @@ cython_debug/
 
 # Ignore test output files.
 test-results/
+test-integration/

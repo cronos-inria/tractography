@@ -30,7 +30,8 @@ dependencies = [
     "siphash24~=1.7",
     "nimesh@git+https://gitlab.inria.fr/cronos/software/nimesh",
     "pydantic~=2.10",
-	"trimesh>=4.7"
+	"trimesh>=4.7",
+	"platformdirs>=4.0"
 ]
 
 [project.scripts]
@@ -48,11 +49,13 @@ tractography = { path = ".", editable = true }
 [tool.pixi.dependencies]
 mkdocs = { version = "*", channel = "conda-forge" }
 coverage = { version = "*", channel = "conda-forge" }
+pymdown-extensions = { version = "*", channel = "conda-forge" }
 
 [tool.pixi.tasks]
 tractography = "tractography"
 test = "python -c 'import tractography'"
 unittest = "python -m unittest"
+test-examples = "python -m unittest discover -s test/integration -v"
 coverage = "coverage run -m unittest -v && coverage report && coverage html"
 doc = "mkdocs gh-deploy --config-file mkdocs.yml --force"
 
