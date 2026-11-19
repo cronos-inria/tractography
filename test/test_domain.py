@@ -87,6 +87,37 @@ def test_image_domain_builds_oriented_world_space_boundary():
     assert np.all(np.einsum("ij,ij->i", face_centers, outward) > 0)
 
 
+def test_image_domain_boundary_is_outward_with_reflected_affine():
+    """A reflection in the image affine preserves outward face normals."""
+    image = np.ones((1, 1, 1), dtype=np.uint8)
+    affine = np.eye(4)
+    affine[:3, :3] = np.diag([-2.0, 3.0, 4.0])
+    affine[:3, 3] = [10.0, 20.0, 30.0]
+    domain = tg.domain.Image(Nifti1Image(image, affine))
+
+    face_centers = domain.boundary.triangles_center - affine[:3, 3]
+    outward = domain.boundary.face_normals
+    assert np.all(np.einsum("ij,ij->i", face_centers, outward) > 0)
+
+
+def test_image_domain_boundary_preserves_cavity_orientation():
+    """Cavity faces point from occupied voxels into the cavity."""
+    image = np.ones((3, 3, 3), dtype=np.uint8)
+    image[1, 1, 1] = 0
+    domain = tg.domain.Image(Nifti1Image(image, np.eye(4)))
+
+    face_centers = domain.boundary.triangles_center
+    in_cavity = np.all(
+        (face_centers >= 0.5) & (face_centers <= 1.5), axis=1
+    )
+    cavity_normals = domain.boundary.face_normals[in_cavity]
+    cavity_face_centers = face_centers[in_cavity]
+
+    assert len(cavity_normals) == 12
+    toward_cavity = np.array([1.0, 1.0, 1.0]) - cavity_face_centers
+    assert np.all(np.einsum("ij,ij->i", cavity_normals, toward_cavity) > 0)
+
+
 def test_image_domain_boundary_omits_faces_between_occupied_voxels():
     domain = tg.domain.Image(
         Nifti1Image(np.ones((2, 1, 1), dtype=np.uint8), np.eye(4))
