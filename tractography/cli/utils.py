@@ -1,13 +1,12 @@
 import argparse
+from pathlib import Path
+
+from nibabel.nifti1 import Nifti1Image
 
 import tractography as tg
 
 _N_SEEDS = 1000000
 
-
-_MAX_ANGLE = """
-the maximum angle between consecutive steps
-"""
 
 _N_SEEDS_HELP = f"""
 the number of seeds to generate (default is {_N_SEEDS})
@@ -15,15 +14,45 @@ the number of seeds to generate (default is {_N_SEEDS})
 
 
 def add_n_seeds_argument(parser: argparse.ArgumentParser):
-    """Add the --number-of-seeds argument to a parser"""
+    """Add the API-aligned seed-count argument to a parser."""
     parser.add_argument(
         "--number-of-seeds",
-        "-n",
         dest="n_seeds",
-        type=_positive_int,
+        type=_non_negative_int,
         default=_N_SEEDS,
         help=_N_SEEDS_HELP,
     )
+
+
+def add_domain_argument(parser: argparse.ArgumentParser):
+    """Add an optional domain-image argument."""
+    parser.add_argument(
+        "--domain",
+        dest="domain_path",
+        type=Path,
+        help="optional 3D domain image; defaults to nonzero field voxels",
+    )
+
+
+def make_tracking_algorithm(
+    field: Nifti1Image, algorithm: tg.Algorithm
+) -> tg.BaseAlgorithm:
+    """Construct the selected algorithm using the public constructor defaults."""
+    model_type = tg.algorithms.core.LocalModel.from_shape(field.shape)
+    if model_type == tg.algorithms.core.LocalModel.DTI:
+        local_model = tg.local.DiffusionTensorImaging()
+    else:
+        local_model = tg.local.RealSymmetricSphericalHarmonics(field.shape[-1])
+
+    if algorithm == tg.Algorithm.TRANSPORT:
+        return tg.algorithm.Transport(local_model)
+    if algorithm == tg.Algorithm.DETERMINISTIC:
+        return tg.algorithm.Deterministic(local_model)
+    if algorithm == tg.Algorithm.DIFFUSION:
+        return tg.algorithm.Diffusion(local_model)
+    if algorithm == tg.Algorithm.PROBABILISTIC:
+        return tg.algorithm.Probabilistic(local_model)
+    raise ValueError(f"Unsupported tracking algorithm: {algorithm}")
 
 
 def add_tractography_config(parser: argparse.ArgumentParser):
@@ -73,13 +102,13 @@ def set_tractography_config(
         config.streamline.length.maximum = kwargs["max_length"]
 
 
-def _positive_int(value: str) -> int:
+def _non_negative_int(value: str) -> int:
     try:
         parsed = int(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"must be a valid integer, not {value!r}") from exc
 
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError(f"must be a positive integer, not {value!r}")
+    if parsed < 0:
+        raise argparse.ArgumentTypeError(f"must be a non-negative integer, not {value!r}")
 
     return parsed

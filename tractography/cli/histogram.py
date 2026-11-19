@@ -6,11 +6,13 @@ allows the user to generate tractography histograms from files.
 """
 
 from pathlib import Path
+from typing import cast
 
 import nibabel as nib
-import numpy as np
+from nibabel.nifti1 import Nifti1Image
 
 import tractography as tg
+from . import utils as cli_utils
 
 
 _ALGORITHM = tg.Algorithm.DIFFUSION
@@ -57,14 +59,21 @@ def main(
 
     # Load the default config and set user parameters.
     config = tg.configuration.load(algorithm)
-    tg.cli.utils.set_tractography_config(config, kwargs)
+    cli_utils.set_tractography_config(config, kwargs)
 
     # Load the seed mask and the FOD.
-    seed_mask = nib.load(seed_mask_path)
-    fod = nib.load(fod_path)
+    seed_mask = cast(Nifti1Image, nib.loadsave.load(seed_mask_path))
+    fod = cast(Nifti1Image, nib.loadsave.load(fod_path))
 
-    histogram = tg.histogram(fod, seed_mask, n_seeds, config)
-    nib.save(histogram, histogram_path)
+    tracking_algorithm = tg._algorithm_from_config(fod, config)
+    histogram = tg.tod(
+        fod,
+        n_seeds,
+        seed_mask,
+        tracking_algorithm,
+        maximum_streamline_length=float(config.streamline.length.maximum),
+    )
+    nib.loadsave.save(histogram, histogram_path)
 
 
 def add_parser(subparsers):
@@ -73,7 +82,7 @@ def add_parser(subparsers):
     subparser.add_argument("fod_path", type=Path, help=_FOD_HELP)
     subparser.add_argument("seed_mask_path", type=Path, help=_SEED_MASK_HELP)
     subparser.add_argument("histogram_path", type=Path, help=_HISTOGRAM_HELP)
-    tg.cli.utils.add_n_seeds_argument(subparser)
+    cli_utils.add_n_seeds_argument(subparser)
     subparser.add_argument(
         "--algorithm",
         type=tg.Algorithm,
@@ -83,7 +92,7 @@ def add_parser(subparsers):
     )
 
     # Add the common configuration options.
-    tg.cli.utils.add_tractography_config(subparser)
+    cli_utils.add_tractography_config(subparser)
 
     subparser.set_defaults(func=main)
     return subparser
