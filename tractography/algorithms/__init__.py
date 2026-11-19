@@ -36,12 +36,10 @@ class RegistryEntry:
         configuration: Configuration class for the algorithm.
         tractogram: Tractogram function conforming to TractogramCallable protocol.
             Signature: (fod: Nifti1Image, seeds: list[Seed], config, cache=None) -> (Tractogram, cache)
-        histogram: Histogram function for generating streamline distributions.
         connectome: Optional connectome function for generating connectivity matrices.
     """
     configuration: type[BaseConfiguration]
     tractogram: TractogramCallable[Any]
-    histogram: Callable
     connectome: Optional[Callable] = None
 
 
@@ -52,7 +50,6 @@ def register(
     algorithm: Algorithm,
     configuration: type[BaseConfiguration],
     tractogram: TractogramCallable[Any],
-    histogram: Callable,
     connectome: Optional[Callable] = None,
 ) -> None:
     """Register algorithm implementations.
@@ -61,7 +58,6 @@ def register(
         algorithm: The algorithm enum value.
         configuration: Configuration class for the algorithm.
         tractogram: Tractogram function conforming to TractogramCallable protocol.
-        histogram: Callable for histogram computation.
         connectome: Optional callable for connectome computation.
     """
     if algorithm in _REGISTRY:
@@ -69,7 +65,6 @@ def register(
     _REGISTRY[algorithm] = RegistryEntry(
         configuration=configuration,
         tractogram=tractogram,
-        histogram=histogram,
         connectome=connectome,
     )
 

@@ -3,9 +3,6 @@
 
 #define PI 3.14159265359f
 
-// For now, the histograms are always expressed in spherical harmonics with 45 coefficients.
-#define HISTOGRAM_N_COEFFICIENTS 45
-
 /**
  * MODEL_VALUE_T
  * A struct to hold the value of a local model (DTI, Spherical Harmonics, etc.) and its

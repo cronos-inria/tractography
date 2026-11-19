@@ -7,7 +7,7 @@ import numpy as np
 import pydantic
 
 from ..seeds import Seed
-from .. import seeds as seeds_module, utils
+from .. import seeds as seeds_module
 from . import opencl as cl
 
 from .core import (
@@ -43,74 +43,6 @@ class Cache(BaseCache):
 
     # The affine transform from world to voxel space.
     fod_inverse_affine: cl.Buffer | None = None
-
-def histogram(fod, fod_affine, seed_fod, seed_fod_affine, n_seeds, config):
-    """Generate a streamline histogram
-
-    The histogram corresponds to the FOD associated to a particular tractogram. That is,
-    the distribution of streamline orientations, for each voxel. This function
-    generates the histogram directly, without saving the intermediate streamlines and
-    therefore allows a much larger number of seeds to be used.
-
-    """
-
-    # Determine the number of seeds per thread. We want 1k threads.
-    n_threads = 1000
-    n_seeds_per_thread = np.ceil(n_seeds / n_threads)
-
-    # Prepare the data necessary for the seeds.
-    mask = np.any(seed_fod != 0, axis=-1)
-    voxels = np.array(np.nonzero(mask), dtype=np.float32).T
-    voxels = np.hstack((voxels, np.ones((len(voxels), 1))))
-    inline_fod = fod[mask]
-    randoms = np.random.randint(4294967295, size=(n_threads, 2))
-
-    # Determine the local model based on the data shape.
-    model = LocalModel.from_shape(fod.shape)
-
-    # Send the data to the device.
-    fod_buffer = cl.new_read_only_buffer(fod.astype(np.float32))
-    fod_inverse_affine_buffer = cl.new_read_only_buffer(np.linalg.inv(fod_affine).astype(np.float32))
-    seed_fod_buffer = cl.new_read_only_buffer(inline_fod.astype(np.float32))
-    seed_fod_voxels_buffer = cl.new_read_only_buffer(voxels.astype(np.float32))
-    seed_fod_affine_buffer = cl.new_read_only_buffer(seed_fod_affine.astype(np.float32))
-    randoms_buffer = cl.new_buffer(randoms.astype(np.uint32))
-
-    hist = np.zeros(fod.shape[:3] + (45,), dtype=np.float32)
-    hist_buffer = cl.new_buffer(hist)
-
-    # Set constants in the OpenCL code.
-    values = {
-        "model": str(model),
-        "nx": fod.shape[0],
-        "ny": fod.shape[1],
-        "nz": fod.shape[2],
-        "nnz": len(voxels),
-        "n_coefficients": fod.shape[-1],
-        "n_steps": config.n_steps,
-        "n_seeds": n_threads,
-    }
-    program = cl.build_program(values, ["utils/seeds.cl", "algorithms/transport/histogram.cl"])
-
-    args = (
-        fod_buffer,
-        fod_inverse_affine_buffer,
-        seed_fod_buffer,
-        seed_fod_voxels_buffer,
-        seed_fod_affine_buffer,
-        randoms_buffer,
-        np.float32(config.step_size),
-        np.float32(config.save_at),
-        np.float32(config.inverse_curvature),
-        np.uint32(n_seeds_per_thread),
-        hist_buffer,
-    )
-    cl.run_histogram(program, args, n_threads)
-    cl.copy_from_buffer(hist_buffer, hist)
-
-    hist = utils.normalize_odf(hist)
-    return hist
-
 
 def tractogram(fod: Nifti1Image, seeds: list[Seed], config: Configuration, cache: Cache | None = None) -> Tuple[Tractogram, Cache]:
     """Generate streamlines using transport tracking.
@@ -325,4 +257,4 @@ def connectome(
     return conn_matrix
 
 
-register(Algorithm.TRANSPORT, Configuration, tractogram, histogram, connectome)
+register(Algorithm.TRANSPORT, Configuration, tractogram, connectome)

@@ -156,40 +156,6 @@ class TestExactSolutions(unittest.TestCase):
         np.testing.assert_array_almost_equal(streamline, expected, decimal=3)
 
 
-class TestTransportHistogram(unittest.TestCase):
-
-    def setUp(self):
-        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    def test_cross(self):
-
-        fod, wm, _ = test.data.cross()
-
-        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        nib.save(wm, _TEST_RESULTS_DIR / "histogram-cross-wm.nii.gz")
-        nib.save(fod, _TEST_RESULTS_DIR / "histogram-cross-fod.nii.gz")
-
-        histogram = tg.algorithms.transport.histogram(
-            fod.get_fdata(),
-            fod.affine,
-            fod.get_fdata(),
-            fod.affine,
-            10000,
-            config,
-        )
-        nib.save(
-            nib.Nifti1Image(histogram, fod.affine),
-            _TEST_RESULTS_DIR / "histogram-cross-histogram.nii.gz",
-        )
-
-        # The histogram and the FOD should be very similar. The value of 0.5 is
-        # arbitrary.
-        self.assertTrue(
-            np.linalg.norm(histogram - fod.get_fdata())
-            / wm.get_fdata().size < 0.5
-        )
-
-
 class TestTractogram(unittest.TestCase):
     """Test the OpenCL implementation of Transport tractography"""
 
