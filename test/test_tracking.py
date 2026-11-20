@@ -4,7 +4,6 @@ from scipy.sparse import csr_matrix
 
 import tractography as tg
 from tractography.tracking import tractogram
-from tractography.cli.connectome import _aggregate_by_segmentation
 from test import data
 
 
@@ -236,18 +235,14 @@ def test_connectome_cross_dataset_connects_expected_regions():
 		gamma=0.0,
 	)
 
-	boundary_matrix = tg.tracking.connectome(
-		algorithm,
-		domain,
-		field,
+	matrix, labels = tg.connectome(
+		fod_image,
 		n_seeds=10000,
+		domain=mask_image,
+		algorithm=algorithm,
+		segmentation=segmentation,
+		distance_upper_bound=2.0,
 		maximum_streamline_length=12.0,
-	)
-	matrix, labels = _aggregate_by_segmentation(
-		boundary_matrix,
-		domain.boundary.vertices,
-		segmentation,
-		assignment_radius=2.0,
 	)
 
 	np.testing.assert_array_equal(labels, [1, 2, 3, 4])

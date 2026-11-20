@@ -49,6 +49,7 @@ tractography = { path = ".", editable = true }
 mkdocs = { version = "*", channel = "conda-forge" }
 coverage = { version = "*", channel = "conda-forge" }
 pymdown-extensions = { version = "*", channel = "conda-forge" }
+pytest = { version = "*", channel = "conda-forge" }
 
 [tool.pixi.tasks]
 tractography = "tractography"
