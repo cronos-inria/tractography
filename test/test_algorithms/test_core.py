@@ -2,9 +2,9 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-import pyopencl as cl
 
 import tractography as tg
+from tractography.opencl import BufferAccess, OpenCLRuntime
 
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
@@ -33,22 +33,16 @@ class TestCore(unittest.TestCase):
             (sph, np.array([[0, np.pi], [0, 0]], dtype=np.float32))
         )
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.READ_ONLY
-        cart_buffer = cl.Buffer(_context, flags, size=cart.nbytes)
-        cl.enqueue_copy(_queue, cart_buffer, cart)
-
-        flags = cl.mem_flags.WRITE_ONLY
-        sph_buffer = cl.Buffer(_context, flags, size=sph.nbytes)
+        runtime = OpenCLRuntime()
+        cart_buffer = runtime.allocate_buffer(cart.nbytes, BufferAccess.READ_ONLY)
+        runtime.copy_to_buffer(cart_buffer, cart)
+        sph_buffer = runtime.allocate_buffer(sph.nbytes)
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
+        program = runtime.build_kernel_program("test-boltzmann.cl")
 
         program.test_cart2sph(
-            _queue,
+            runtime.queue,
             (1,),
             None,
             cart_buffer,
@@ -56,51 +50,43 @@ class TestCore(unittest.TestCase):
             sph_buffer,
         )
         new_sph = np.zeros_like(sph)
-        cl.enqueue_copy(_queue, new_sph, sph_buffer)
+        runtime.copy_from_buffer(sph_buffer, new_sph, is_blocking=True)
         np.testing.assert_array_almost_equal(new_sph, sph, 3)
 
     def test_randu(self):
         """Test the randu function"""
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.WRITE_ONLY
+        runtime = OpenCLRuntime()
         values = np.zeros((100000,)).astype(np.float32)
-        values_buffer = cl.Buffer(_context, flags, size=values.nbytes)
+        values_buffer = runtime.allocate_buffer(values.nbytes)
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
+        program = runtime.build_kernel_program("test-boltzmann.cl")
 
         program.test_randu(
-            _queue,
+            runtime.queue,
             (1,),
             None,
             values_buffer,
             np.uint32(len(values)),
         )
-        cl.enqueue_copy(_queue, values, values_buffer)
+        runtime.copy_from_buffer(values_buffer, values, is_blocking=True)
 
     def test_randn(self):
         """Test the randn function"""
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.WRITE_ONLY
+        runtime = OpenCLRuntime()
         values = np.zeros((100000,)).astype(np.float32)
-        values_buffer = cl.Buffer(_context, flags, size=values.nbytes)
+        values_buffer = runtime.allocate_buffer(values.nbytes)
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
+        program = runtime.build_kernel_program("test-boltzmann.cl")
 
         program.test_randn(
-            _queue,
+            runtime.queue,
             (1,),
             None,
             values_buffer,
             np.uint32(len(values)),
         )
-        cl.enqueue_copy(_queue, values, values_buffer)
+        runtime.copy_from_buffer(values_buffer, values, is_blocking=True)
