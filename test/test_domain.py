@@ -6,6 +6,7 @@ import pyopencl as cl
 import pytest
 
 import tractography as tg
+from tractography.opencl import OpenCLRuntime
 
 
 def test_domain_contains():
@@ -180,6 +181,7 @@ def test_domain_boundary_bvh_finds_segment_triangle_hit():
     )
     context = cl.create_some_context(interactive=False)
     queue = cl.CommandQueue(context)
+    runtime = OpenCLRuntime(context=context, queue=queue)
     source = domain.get_source() + """
     __kernel void probe(DOMAIN_ARGS, __global int* result)
     {
@@ -201,7 +203,7 @@ def test_domain_boundary_bvh_finds_segment_triangle_hit():
     buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, size=result.nbytes)
     kernel_dir = files("tractography.resources") / "kernels"
     program = cl.Program(context, source).build(f"-I {kernel_dir}")
-    program.probe(queue, (1,), None, *domain.get_args(context), buffer)
+    program.probe(queue, (1,), None, *domain.get_args(runtime), buffer)
     cl.enqueue_copy(queue, result, buffer)
     assert result[0] == 1
 
@@ -212,6 +214,7 @@ def test_domain_boundary_bvh_finds_sampled_inward_ray_exit():
     )
     context = cl.create_some_context(interactive=False)
     queue = cl.CommandQueue(context)
+    runtime = OpenCLRuntime(context=context, queue=queue)
     source = domain.get_source() + """
     __kernel void probe(DOMAIN_ARGS, __global int* results)
     {
@@ -247,6 +250,6 @@ def test_domain_boundary_bvh_finds_sampled_inward_ray_exit():
     buffer = cl.Buffer(context, cl.mem_flags.WRITE_ONLY, size=results.nbytes)
     kernel_dir = files("tractography.resources") / "kernels"
     program = cl.Program(context, source).build(f"-I {kernel_dir}")
-    program.probe(queue, (len(results),), None, *domain.get_args(context), buffer)
+    program.probe(queue, (len(results),), None, *domain.get_args(runtime), buffer)
     cl.enqueue_copy(queue, results, buffer)
     assert np.all(results == 1)

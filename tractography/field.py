@@ -5,17 +5,12 @@ from typing import Any
 from nibabel.affines import apply_affine
 from nibabel.spatialimages import SpatialImage
 import numpy as np
-import pyopencl as cl
 import pyopencl.cltypes as clt
 
 from .domain import Points
 from .opencl import BufferAccess, OpenCLRuntime
 
 type FieldValues = np.ndarray[tuple[int, int], np.dtype[clt.float]]
-
-READ_ONLY = cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR
-WRITE_ONLY = cl.mem_flags.WRITE_ONLY
-
 
 class BaseField(ABC):
     """Abstract interface for a field of local model parameters."""
@@ -37,11 +32,11 @@ class BaseField(ABC):
         pass
 
     @abstractmethod
-    def get_args(self, context: cl.Context) -> list[Any]:
+    def get_args(self, runtime: OpenCLRuntime) -> list[Any]:
         """Return the OpenCL kernel arguments for the field.
         
         Args:
-            context: OpenCL context for creating domain buffers.
+            runtime: Runtime for creating domain buffers.
 
         Returns:
             Arguments to pass to the field's OpenCL kernel.
@@ -119,10 +114,12 @@ class Image(BaseField):
         }
         """
 
-    def get_args(self, context: cl.Context) -> list[Any]:
-        return [cl.Buffer(context, READ_ONLY, hostbuf=self.values),
-                self.dims,
-                cl.Buffer(context, READ_ONLY, hostbuf=self.inverse_affine)]
+    def get_args(self, runtime: OpenCLRuntime) -> list[Any]:
+        return [
+            runtime.buffer_from_array(self.values, BufferAccess.READ_ONLY),
+            self.dims,
+            runtime.buffer_from_array(self.inverse_affine, BufferAccess.READ_ONLY),
+        ]
 
     def evaluate(self, points: Points) -> FieldValues:
 
@@ -186,7 +183,7 @@ def evaluate(
     # Prepare the results buffer.
     result = np.empty((n_points, field.n_parameters), dtype=clt.float)
     results_buffer = runtime.allocate_buffer(result.nbytes)
-    args = field.get_args(runtime.context) + [
+    args = field.get_args(runtime) + [
         points_buffer,
         clt.uint(n_points),
         results_buffer,

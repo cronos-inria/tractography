@@ -9,6 +9,7 @@ For algorithm classes and update parameters, see [Base Algorithm](base-algorithm
 The public function accepts a field or FOD image, an optional domain, an optional algorithm, and a seed list or seed count.
 If the domain is omitted, nonzero image-field voxels define it.
 If the algorithm is omitted, transport is used.
+OpenCL operations create a runtime automatically. To reuse a device context across seed generation and tracking calls, create `tg.opencl.OpenCLRuntime()` and pass it with `runtime=`.
 See [Getting Started](../getting_started.md) for a complete example that creates seeds, runs tracking, and saves the result.
 
 ```python
@@ -27,6 +28,14 @@ tractogram = tg.tractogram(
 	maximum_streamline_length=300.0,
 	batch_size=len(seeds),
 )
+```
+
+For example, reuse one runtime for FOD seed generation and tracking:
+
+```python
+runtime = tg.opencl.OpenCLRuntime()
+seeds = tg.seeds.from_fod(fod, 100, runtime=runtime)
+tractogram = tg.tractogram(fod, seeds, white_matter, algorithm, runtime=runtime)
 ```
 
 The returned NiBabel `Tractogram` contains streamlines in RAS+ millimeter coordinates.
@@ -60,4 +69,4 @@ from tractography.tracking import tractogram as track
 result = track(algorithm, domain, field, seeds, save_at=1.0)
 ```
 
-This lower-level function requires a working OpenCL runtime.
+This lower-level function creates a runtime when omitted. Pass `runtime=` to reuse an existing `tg.opencl.OpenCLRuntime`.

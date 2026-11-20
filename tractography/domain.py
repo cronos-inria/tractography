@@ -5,18 +5,16 @@ from typing import Any
 from nibabel.affines import apply_affine
 from nibabel.spatialimages import SpatialImage
 import numpy as np
-import pyopencl as cl
 import pyopencl.cltypes as clt
 import trimesh
 from trimesh import Trimesh
 
+from .opencl import BufferAccess, OpenCLRuntime
 from .seeds import Seed
 
 type Points = np.ndarray[tuple[int, int], Any]
 type ContainsResult = np.ndarray[tuple[int], np.dtype[np.bool_]]
 
-READ_ONLY = cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR
-WRITE_ONLY = cl.mem_flags.WRITE_ONLY
 _OPENCL_DIR = files("tractography.resources") / "kernels"
 
 
@@ -31,7 +29,7 @@ class BaseDomain(ABC):
     Subclasses provide their domain-specific OpenCL definitions through
     ``get_source()`` and should append ``super().get_source()`` to include the
     shared boundary sampler. Their ``get_args()`` implementations should also
-    append ``super().get_args(context)`` to include the boundary buffers.
+    append ``super().get_args(runtime)`` to include the boundary buffers.
     """
 
     def __init__(self, boundary: Trimesh) -> None:
@@ -170,11 +168,11 @@ class BaseDomain(ABC):
 
         """
 
-    def get_args(self, context: cl.Context) -> list[Any]:
+    def get_args(self, runtime: OpenCLRuntime) -> list[Any]:
         """Upload boundary data and return its OpenCL arguments.
 
         Args:
-            context: OpenCL context for creating domain buffers.
+            runtime: Runtime for creating domain buffers.
 
         Returns:
             Boundary vertices, triangle indices, normalized cumulative areas,
@@ -182,14 +180,22 @@ class BaseDomain(ABC):
             in ``DOMAIN_ARGS`` order.
         """
         return [
-            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_vertices),
-            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_indices),
-            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_cumulative_areas),
+            runtime.buffer_from_array(self.boundary_vertices, BufferAccess.READ_ONLY),
+            runtime.buffer_from_array(self.boundary_indices, BufferAccess.READ_ONLY),
+            runtime.buffer_from_array(
+                self.boundary_cumulative_areas, BufferAccess.READ_ONLY
+            ),
             clt.uint(self.n_boundary_triangles),
-            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_bvh_bounds_min),
-            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_bvh_bounds_max),
-            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_bvh_nodes),
-            cl.Buffer(context, READ_ONLY, hostbuf=self.boundary_bvh_triangles),
+            runtime.buffer_from_array(
+                self.boundary_bvh_bounds_min, BufferAccess.READ_ONLY
+            ),
+            runtime.buffer_from_array(
+                self.boundary_bvh_bounds_max, BufferAccess.READ_ONLY
+            ),
+            runtime.buffer_from_array(self.boundary_bvh_nodes, BufferAccess.READ_ONLY),
+            runtime.buffer_from_array(
+                self.boundary_bvh_triangles, BufferAccess.READ_ONLY
+            ),
             clt.uint(self.n_boundary_bvh_nodes),
         ]
 
@@ -377,18 +383,20 @@ class Image(BaseDomain):
         }
         """
 
-    def get_args(self, context: cl.Context) -> list[Any]:
+    def get_args(self, runtime: OpenCLRuntime) -> list[Any]:
         """Create OpenCL buffers and return arguments for the image domain.
 
         Args:
-            context: OpenCL context for creating the buffers.
+            runtime: Runtime for creating the buffers.
 
         Returns:
             The mask, dimensions, and inverse-affine kernel arguments.
         """
-        values_buffer = cl.Buffer(context, READ_ONLY, hostbuf=self.values)
-        affine_buffer = cl.Buffer(context, READ_ONLY, hostbuf=self.inverse_affine)
-        return super().get_args(context) + [values_buffer, self.dims, affine_buffer]
+        values_buffer = runtime.buffer_from_array(self.values, BufferAccess.READ_ONLY)
+        affine_buffer = runtime.buffer_from_array(
+            self.inverse_affine, BufferAccess.READ_ONLY
+        )
+        return super().get_args(runtime) + [values_buffer, self.dims, affine_buffer]
 
     def contains(self, points: Points) -> ContainsResult:
         """Check whether world-space points map to nonzero image voxels.
@@ -423,7 +431,11 @@ class Image(BaseDomain):
         return result
 
 
-def contains(domain: BaseDomain, points: Points) -> ContainsResult:
+def contains(
+    domain: BaseDomain,
+    points: Points,
+    runtime: OpenCLRuntime | None = None,
+) -> ContainsResult:
     """Check domain membership for points using an OpenCL kernel.
 
     Args:
@@ -438,10 +450,8 @@ def contains(domain: BaseDomain, points: Points) -> ContainsResult:
     n_points = points.shape[0]
     if n_points == 0:
         return np.array([], dtype=np.bool_)
-
-    # Create the global OpenCL context.
-    _context = cl.create_some_context(interactive=False)
-    _queue = cl.CommandQueue(_context)
+    if runtime is None:
+        runtime = OpenCLRuntime()
 
     # Create the OpenCL program from the domain source.
     source = domain.get_source() + """
@@ -463,21 +473,21 @@ def contains(domain: BaseDomain, points: Points) -> ContainsResult:
     # to 0 to match the OpenCL float4 format.
     points_data = np.zeros((n_points, 4), dtype=clt.float)
     points_data[:, :3] = points
-    points_buffer = cl.Buffer(_context, READ_ONLY, hostbuf=points_data)
+    points_buffer = runtime.buffer_from_array(points_data, BufferAccess.READ_ONLY)
 
     # Prepare the results buffer.
     result = np.empty(n_points, dtype=np.bool_)
-    results_buffer = cl.Buffer(_context, WRITE_ONLY, size=result.nbytes)
-    args = domain.get_args(_context) + [
+    results_buffer = runtime.allocate_buffer(result.nbytes)
+    args = domain.get_args(runtime) + [
         points_buffer,
         clt.uint(n_points),
         results_buffer,
     ]
 
     # Run and transfer the results back to the host.
-    program = cl.Program(_context, source).build(f"-I {_OPENCL_DIR}")
-    program.contains(_queue, (n_points,), None, *args)
-    cl.enqueue_copy(_queue, result, results_buffer)
+    program = runtime.build_program(source, options=("-I", str(_OPENCL_DIR)))
+    program.contains(runtime.queue, (n_points,), None, *args)
+    runtime.copy_from_buffer(results_buffer, result, is_blocking=True)
 
     return result
 
@@ -486,6 +496,7 @@ def seed(
     domain: BaseDomain,
     n_seeds: int,
     rng_seed: int | None = None,
+    runtime: OpenCLRuntime | None = None,
 ) -> list[Seed]:
     """Generate seeds by sampling the domain boundary with OpenCL.
 
@@ -508,6 +519,8 @@ def seed(
         raise ValueError("n_seeds must be a non-negative integer.")
     if n_seeds == 0:
         return []
+    if runtime is None:
+        runtime = OpenCLRuntime()
 
     if rng_seed is None:
         rng_seed = int(np.random.default_rng().integers(0, 2**32, dtype=np.uint32))
@@ -543,23 +556,21 @@ def seed(
     }
     """
 
-    context = cl.create_some_context(interactive=False)
-    queue = cl.CommandQueue(context)
     locations = np.empty((n_seeds, 4), dtype=clt.float)
     orientations = np.empty((n_seeds, 4), dtype=clt.float)
-    locations_buffer = cl.Buffer(context, WRITE_ONLY, size=locations.nbytes)
-    orientations_buffer = cl.Buffer(context, WRITE_ONLY, size=orientations.nbytes)
-    args = domain.get_args(context) + [
+    locations_buffer = runtime.allocate_buffer(locations.nbytes)
+    orientations_buffer = runtime.allocate_buffer(orientations.nbytes)
+    args = domain.get_args(runtime) + [
         clt.uint(rng_seed),
         clt.uint(n_seeds),
         locations_buffer,
         orientations_buffer,
     ]
 
-    program = cl.Program(context, source).build(f"-I {_OPENCL_DIR}")
-    program.sample_domain_boundary(queue, (n_seeds,), None, *args)
-    cl.enqueue_copy(queue, locations, locations_buffer)
-    cl.enqueue_copy(queue, orientations, orientations_buffer)
+    program = runtime.build_program(source, options=("-I", str(_OPENCL_DIR)))
+    program.sample_domain_boundary(runtime.queue, (n_seeds,), None, *args)
+    runtime.copy_from_buffer(locations_buffer, locations, is_blocking=True)
+    runtime.copy_from_buffer(orientations_buffer, orientations, is_blocking=True)
 
     return [
         Seed(location[:3], orientation[:3])

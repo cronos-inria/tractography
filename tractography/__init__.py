@@ -1,6 +1,7 @@
 from . import algorithm as algorithm_module
 from . import algorithms, connectivity, core, data, domain as domain_module
 from . import field as field_module
+from .opencl import OpenCLRuntime
 from . import local, nifti, seeds, tracking, utils
 from .algorithm import BaseAlgorithm
 
@@ -61,6 +62,7 @@ def connectome(
     distance_upper_bound: float = 4.0,
     maximum_streamline_length: float = 300.0,
     minimum_streamline_length: float = 0.0,
+    runtime: OpenCLRuntime | None = None,
 ) -> tuple[csr_matrix | npt.NDArray, npt.NDArray]:
     """Generate a boundary or region connectome.
 
@@ -88,6 +90,7 @@ def connectome(
         maximum_streamline_length: Maximum propagation distance.
         minimum_streamline_length: Minimum propagated distance for a track to
             contribute to the connectome.
+        runtime: Optional OpenCL runtime to reuse. One is created when omitted.
     """
 
     if not isinstance(n_seeds, (int, np.integer)) or n_seeds < 0:
@@ -181,6 +184,7 @@ def connectome(
         n_seeds,
         maximum_streamline_length=maximum_streamline_length,
         minimum_streamline_length=minimum_streamline_length,
+        runtime=runtime,
     )
 
     if labels is None:
@@ -227,6 +231,7 @@ def tod(
     algorithm: BaseAlgorithm | None = None,
     *,
     maximum_streamline_length: float = 300.0,
+    runtime: OpenCLRuntime | None = None,
 ) -> Nifti1Image:
     """Estimate a track-orientation distribution (TOD) from a field.
 
@@ -246,6 +251,7 @@ def tod(
         algorithm: Orientation-update algorithm. Defaults to transport using
             the local model inferred from the field's parameter count.
         maximum_streamline_length: Maximum propagation distance.
+        runtime: Optional OpenCL runtime to reuse. One is created when omitted.
 
     Returns:
         A NIfTI image with 45 real, symmetric spherical-harmonic TOD
@@ -366,6 +372,7 @@ def tod(
         image_grid,
         n_seeds,
         maximum_streamline_length=maximum_streamline_length,
+        runtime=runtime,
     )
 
 
@@ -379,6 +386,7 @@ def tractogram(
     maximum_streamline_length: float = 300.0,
     minimum_streamline_length: float = 0.0,
     batch_size: int = 50000,
+    runtime: OpenCLRuntime | None = None,
 ) -> Tractogram:
     """Generate streamlines from a NIfTI image or an existing field.
 
@@ -417,6 +425,8 @@ def tractogram(
         minimum_streamline_length: Minimum saved-point distance for retaining
             a streamline.
         batch_size: Maximum seeds passed to each low-level tracking call.
+        runtime: Optional OpenCL runtime to reuse across seed generation and
+            tracking. One is created when omitted.
 
     Returns:
         A NiBabel tractogram whose points are in the field/domain world
@@ -510,8 +520,10 @@ def tractogram(
             "does not provide an image-derived nonzero domain."
         )
 
+    if runtime is None:
+        runtime = OpenCLRuntime()
     if isinstance(seeds, (int, np.integer)):
-        seeds = domain_module.seed(tracking_domain, n_seeds)
+        seeds = domain_module.seed(tracking_domain, n_seeds, runtime=runtime)
     if not seeds:
         return Tractogram([], affine_to_rasmm=np.eye(4))
 
@@ -524,6 +536,7 @@ def tractogram(
             _seeds_to_tracking_array(seeds[start : start + batch_size]),
             save_at=save_at,
             maximum_streamline_length=maximum_streamline_length,
+            runtime=runtime,
         )
         streamlines.extend(
             streamline
