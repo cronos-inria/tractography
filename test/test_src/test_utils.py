@@ -1,35 +1,35 @@
 import unittest
-from pathlib import Path
 
 import numpy as np
-import pyopencl as cl
 
 import tractography as tg
-
-_OPENCL_DIR = Path(__file__).parents[2] / "src"
-_DATA_DIR = Path(__file__).parents[1] / "data"
+from tractography.opencl import BufferAccess, OpenCLRuntime
 
 
 class TestCore(unittest.TestCase):
     """Test the OpenCL implementation of core functions"""
 
+    @classmethod
+    def setUpClass(cls):
+        cls.runtime = OpenCLRuntime()
+
     def test_randu(self):
         """Test OpenCL generation of uniform floats"""
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "utils/core.cl")
+        program = self.runtime.build_kernel_program("utils/core.cl")
 
         n_values = 1000000
         values = np.zeros((n_values,), dtype=np.float32)
-        values_buffer = tg.algorithms.opencl.new_write_only_buffer(values.nbytes)
+        values_buffer = self.runtime.allocate_buffer(values.nbytes)
         program.randus(
-            tg.algorithms.opencl._queue,
+            self.runtime.queue,
             (1,),
             None,
             values_buffer,
             np.uint32(n_values),
         )
-        tg.algorithms.opencl.copy_from_buffer(values_buffer, values)
+        self.runtime.copy_from_buffer(values_buffer, values, is_blocking=True)
         self.assertTrue(values.min() > 0)
         self.assertTrue(values.max() < 1)
 
@@ -37,26 +37,30 @@ class TestCore(unittest.TestCase):
         """Test OpenCL generation of uniform integers"""
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "utils/core.cl")
+        program = self.runtime.build_kernel_program("utils/core.cl")
 
         n_values = 1000000
         values = np.zeros((n_values,), dtype=np.uint32)
-        values_buffer = tg.algorithms.opencl.new_write_only_buffer(values.nbytes)
+        values_buffer = self.runtime.allocate_buffer(values.nbytes)
         program.randis(
-            tg.algorithms.opencl._queue,
+            self.runtime.queue,
             (1,),
             None,
             values_buffer,
             np.uint32(n_values),
             np.uint32(100),
         )
-        tg.algorithms.opencl.copy_from_buffer(values_buffer, values)
+        self.runtime.copy_from_buffer(values_buffer, values, is_blocking=True)
         self.assertTrue(values.min() >= 0)
         self.assertTrue(values.max() <= 99)
 
 
 class TestSpharm(unittest.TestCase):
     """Test the OpenCL implementation of spherical harmonic functions"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.runtime = OpenCLRuntime()
 
     def test_ishtmtx_antipodal_symmetry(self):
 
@@ -72,45 +76,30 @@ class TestSpharm(unittest.TestCase):
         values = np.zeros((n, 45), np.float32)
         antipodal_values = np.zeros((n, 45), np.float32)
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.READ_ONLY
-        azimuths_buffer = cl.Buffer(_context, flags, size=azimuths.nbytes)
-        cl.enqueue_copy(_queue, azimuths_buffer, azimuths.astype(np.float32))
-
-        flags = cl.mem_flags.READ_ONLY
-        colatitudes_buffer = cl.Buffer(_context, flags, size=colatitudes.nbytes)
-        cl.enqueue_copy(_queue, colatitudes_buffer, colatitudes.astype(np.float32))
-
-        flags = cl.mem_flags.READ_ONLY
-        antipodal_azimuths_buffer = cl.Buffer(_context, flags, size=azimuths.nbytes)
-        cl.enqueue_copy(
-            _queue, antipodal_azimuths_buffer, antipodal_azimuths.astype(np.float32)
+        azimuths_buffer = self.runtime.buffer_from_array(
+            azimuths.astype(np.float32), BufferAccess.READ_ONLY
         )
-
-        flags = cl.mem_flags.READ_ONLY
-        antipodal_colatitudes_buffer = cl.Buffer(
-            _context, flags, size=colatitudes.nbytes
+        colatitudes_buffer = self.runtime.buffer_from_array(
+            colatitudes.astype(np.float32), BufferAccess.READ_ONLY
         )
-        cl.enqueue_copy(
-            _queue,
-            antipodal_colatitudes_buffer,
-            antipodal_colatitudes.astype(np.float32),
+        antipodal_azimuths_buffer = self.runtime.buffer_from_array(
+            antipodal_azimuths.astype(np.float32), BufferAccess.READ_ONLY
         )
-
-        flags = cl.mem_flags.READ_WRITE
-        values_buffer = cl.Buffer(_context, flags, size=values.nbytes)
-        antipodal_values_buffer = cl.Buffer(
-            _context, flags, size=antipodal_values.nbytes
+        antipodal_colatitudes_buffer = self.runtime.buffer_from_array(
+            antipodal_colatitudes.astype(np.float32), BufferAccess.READ_ONLY
+        )
+        values_buffer = self.runtime.allocate_buffer(
+            values.nbytes, BufferAccess.READ_WRITE
+        )
+        antipodal_values_buffer = self.runtime.allocate_buffer(
+            antipodal_values.nbytes, BufferAccess.READ_WRITE
         )
 
         # Compile the OpenCL program that implements spherical harmonics.
-        program = tg.algorithms.opencl.build_program(dict(), "utils/spharm.cl")
+        program = self.runtime.build_kernel_program("utils/spharm.cl")
 
         program.test_ishtmtx(
-            _queue,
+            self.runtime.queue,
             (1,),
             None,
             azimuths_buffer,
@@ -119,7 +108,7 @@ class TestSpharm(unittest.TestCase):
             values_buffer,
         )
         program.test_ishtmtx(
-            _queue,
+            self.runtime.queue,
             (1,),
             None,
             antipodal_azimuths_buffer,
@@ -128,8 +117,10 @@ class TestSpharm(unittest.TestCase):
             antipodal_values_buffer,
         )
 
-        cl.enqueue_copy(_queue, values, values_buffer)
-        cl.enqueue_copy(_queue, antipodal_values, antipodal_values_buffer)
+        self.runtime.copy_from_buffer(values_buffer, values, is_blocking=True)
+        self.runtime.copy_from_buffer(
+            antipodal_values_buffer, antipodal_values, is_blocking=True
+        )
 
         np.testing.assert_array_almost_equal(values, antipodal_values, 5)
 
@@ -140,26 +131,21 @@ class TestSpharm(unittest.TestCase):
         colatitudes = np.linspace(0, np.pi - np.pi / n, n).astype(np.float32)
         values = tg.core.ishtmtx(azimuths, colatitudes, 45)[0].astype(np.float32)
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.READ_ONLY
-        azimuths_buffer = cl.Buffer(_context, flags, size=azimuths.nbytes)
-        cl.enqueue_copy(_queue, azimuths_buffer, azimuths)
-
-        flags = cl.mem_flags.READ_ONLY
-        colatitudes_buffer = cl.Buffer(_context, flags, size=colatitudes.nbytes)
-        cl.enqueue_copy(_queue, colatitudes_buffer, colatitudes)
-
-        flags = cl.mem_flags.READ_WRITE
-        values_buffer = cl.Buffer(_context, flags, size=values.nbytes)
+        azimuths_buffer = self.runtime.buffer_from_array(
+            azimuths, BufferAccess.READ_ONLY
+        )
+        colatitudes_buffer = self.runtime.buffer_from_array(
+            colatitudes, BufferAccess.READ_ONLY
+        )
+        values_buffer = self.runtime.allocate_buffer(
+            values.nbytes, BufferAccess.READ_WRITE
+        )
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "utils/spharm.cl")
+        program = self.runtime.build_kernel_program("utils/spharm.cl")
 
         program.test_ishtmtx(
-            _queue,
+            self.runtime.queue,
             (1,),
             None,
             azimuths_buffer,
@@ -168,7 +154,7 @@ class TestSpharm(unittest.TestCase):
             values_buffer,
         )
         new_values = np.zeros(values.shape, np.float32)
-        cl.enqueue_copy(_queue, new_values, values_buffer)
+        self.runtime.copy_from_buffer(values_buffer, new_values, is_blocking=True)
         np.testing.assert_array_almost_equal(new_values, values, 5)
 
     def test_ishtmtx_dt(self):
@@ -178,26 +164,21 @@ class TestSpharm(unittest.TestCase):
         colatitudes = np.linspace(0, np.pi - np.pi / n, n).astype(np.float32)
         values = tg.core.ishtmtx(azimuths, colatitudes, 45)[1][0].astype(np.float32)
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.READ_ONLY
-        azimuths_buffer = cl.Buffer(_context, flags, size=azimuths.nbytes)
-        cl.enqueue_copy(_queue, azimuths_buffer, azimuths)
-
-        flags = cl.mem_flags.READ_ONLY
-        colatitudes_buffer = cl.Buffer(_context, flags, size=colatitudes.nbytes)
-        cl.enqueue_copy(_queue, colatitudes_buffer, colatitudes)
-
-        flags = cl.mem_flags.READ_WRITE
-        values_buffer = cl.Buffer(_context, flags, size=values.nbytes)
+        azimuths_buffer = self.runtime.buffer_from_array(
+            azimuths, BufferAccess.READ_ONLY
+        )
+        colatitudes_buffer = self.runtime.buffer_from_array(
+            colatitudes, BufferAccess.READ_ONLY
+        )
+        values_buffer = self.runtime.allocate_buffer(
+            values.nbytes, BufferAccess.READ_WRITE
+        )
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "utils/spharm.cl")
+        program = self.runtime.build_kernel_program("utils/spharm.cl")
 
         program.test_ishtmtx_dt(
-            _queue,
+            self.runtime.queue,
             (1,),
             None,
             azimuths_buffer,
@@ -206,7 +187,7 @@ class TestSpharm(unittest.TestCase):
             values_buffer,
         )
         new_values = np.zeros(values.shape, np.float32)
-        cl.enqueue_copy(_queue, new_values, values_buffer)
+        self.runtime.copy_from_buffer(values_buffer, new_values, is_blocking=True)
         np.testing.assert_array_almost_equal(new_values, values, 5)
 
     def test_ishtmtx_dp(self):
@@ -216,26 +197,21 @@ class TestSpharm(unittest.TestCase):
         colatitudes = np.linspace(0, np.pi - np.pi / n, n).astype(np.float32)
         values = tg.core.ishtmtx(azimuths, colatitudes, 45)[1][1].astype(np.float32)
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.READ_ONLY
-        azimuths_buffer = cl.Buffer(_context, flags, size=azimuths.nbytes)
-        cl.enqueue_copy(_queue, azimuths_buffer, azimuths)
-
-        flags = cl.mem_flags.READ_ONLY
-        colatitudes_buffer = cl.Buffer(_context, flags, size=colatitudes.nbytes)
-        cl.enqueue_copy(_queue, colatitudes_buffer, colatitudes)
-
-        flags = cl.mem_flags.READ_WRITE
-        values_buffer = cl.Buffer(_context, flags, size=values.nbytes)
+        azimuths_buffer = self.runtime.buffer_from_array(
+            azimuths, BufferAccess.READ_ONLY
+        )
+        colatitudes_buffer = self.runtime.buffer_from_array(
+            colatitudes, BufferAccess.READ_ONLY
+        )
+        values_buffer = self.runtime.allocate_buffer(
+            values.nbytes, BufferAccess.READ_WRITE
+        )
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "utils/spharm.cl")
+        program = self.runtime.build_kernel_program("utils/spharm.cl")
 
         program.test_ishtmtx_dp(
-            _queue,
+            self.runtime.queue,
             (1,),
             None,
             azimuths_buffer,
@@ -244,5 +220,5 @@ class TestSpharm(unittest.TestCase):
             values_buffer,
         )
         new_values = np.zeros(values.shape, np.float32)
-        cl.enqueue_copy(_queue, new_values, values_buffer)
+        self.runtime.copy_from_buffer(values_buffer, new_values, is_blocking=True)
         np.testing.assert_array_almost_equal(new_values, values, 5)

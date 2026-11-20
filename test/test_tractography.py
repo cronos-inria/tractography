@@ -9,6 +9,7 @@ from scipy.sparse import csr_matrix
 from scipy.spatial import cKDTree
 
 import tractography as tg
+from tractography.opencl import OpenCLRuntime
 import test
 import test.data
 from test.test_algorithms import make_algorithm
@@ -78,7 +79,10 @@ class TestTractography(unittest.TestCase):
 
         fod, _, _ = test.data.cross()
         n_seeds = 100  # The number of seeds can be smaller than the batch size.
-        seeds = cast(list[tg.seeds.Seed], tg.seeds.from_fod(fod, n_seeds))
+        seeds = cast(
+            list[tg.seeds.Seed],
+            tg.seeds.from_fod(fod, n_seeds, runtime=OpenCLRuntime()),
+        )
         tracking_algorithm = make_algorithm(fod, tg.algorithm.Transport)
         streamlines = tg.tractogram(
             fod,

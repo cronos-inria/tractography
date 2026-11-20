@@ -9,6 +9,7 @@ import pyopencl as cl
 import pyopencl.cltypes as clt
 
 from .domain import Points
+from .opencl import BufferAccess, OpenCLRuntime
 
 type FieldValues = np.ndarray[tuple[int, int], np.dtype[clt.float]]
 
@@ -143,16 +144,18 @@ class Image(BaseField):
         return result
 
 
-def evaluate(field: BaseField, points: Points) -> FieldValues:
+def evaluate(
+    field: BaseField,
+    points: Points,
+    runtime: OpenCLRuntime | None = None,
+) -> FieldValues:
 
     # Stop early on empty points array.
     n_points = points.shape[0]
     if n_points == 0:
         return np.empty((0, field.n_parameters), dtype=clt.float)
-
-    # Create the global OpenCL context.
-    _context = cl.create_some_context(interactive=False)
-    _queue = cl.CommandQueue(_context)
+    if runtime is None:
+        runtime = OpenCLRuntime()
 
     # Create the OpenCL program from the domain source.
     source = field.get_source() + Template("""
@@ -178,20 +181,20 @@ def evaluate(field: BaseField, points: Points) -> FieldValues:
     # to 0 to match the OpenCL float4 format.
     points_data = np.zeros((n_points, 4), dtype=clt.float)
     points_data[:, :3] = points
-    points_buffer = cl.Buffer(_context, READ_ONLY, hostbuf=points_data)
+    points_buffer = runtime.buffer_from_array(points_data, BufferAccess.READ_ONLY)
 
     # Prepare the results buffer.
     result = np.empty((n_points, field.n_parameters), dtype=clt.float)
-    results_buffer = cl.Buffer(_context, WRITE_ONLY, size=result.nbytes)
-    args = field.get_args(_context) + [
+    results_buffer = runtime.allocate_buffer(result.nbytes)
+    args = field.get_args(runtime.context) + [
         points_buffer,
         clt.uint(n_points),
         results_buffer,
     ]
 
     # Run and transfer the results back to the host.
-    program = cl.Program(_context, source).build()
-    program.evaluate(_queue, (n_points,), None, *args)
-    cl.enqueue_copy(_queue, result, results_buffer)
+    program = runtime.build_program(source)
+    program.evaluate(runtime.queue, (n_points,), None, *args)
+    runtime.copy_from_buffer(results_buffer, result, is_blocking=True)
 
     return result

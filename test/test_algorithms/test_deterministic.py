@@ -5,6 +5,7 @@ import nibabel as nib
 import numpy as np
 
 import tractography as tg
+from tractography.opencl import OpenCLRuntime
 import test
 from test.test_algorithms import run_tractogram
 from test.test_algorithms.exact_solutions import u0u3_coefficients
@@ -46,7 +47,7 @@ class TestDeterministic(unittest.TestCase):
         fod = test.data.uniform_isotropic()
         affine = np.eye(4)
         nii = nib.nifti1.Nifti1Image(fod, affine)
-        seeds = tg.seeds.from_fod(nii, 1000)
+        seeds = tg.seeds.from_fod(nii, 1000, runtime=OpenCLRuntime())
         nib.save(nii, _TEST_RESULTS_DIR / "uniform-fod.nii.gz")
 
         # Generate the tractogram.

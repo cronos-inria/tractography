@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 import tractography as tg
+from tractography.opencl import OpenCLRuntime
 
 
 def test_from_shape_selects_supported_local_models():
@@ -61,7 +62,7 @@ def test_local_model_evaluate_per_orientation_parameters():
         ]
     )
     numpy_result = model.evaluate(parameters, orientations)
-    opencl_result = tg.local.evaluate(model, parameters, orientations)
+    opencl_result = tg.local.evaluate(model, parameters, orientations, OpenCLRuntime())
 
     assert np.allclose(numpy_result, reference, rtol=1e-6, atol=1e-6)
     assert np.allclose(opencl_result, reference, rtol=1e-4, atol=1e-4)
@@ -107,7 +108,7 @@ def test_diffusion_tensor_model_evaluate_and_opencl_match():
         ]
 
     numpy_result = model.evaluate(parameters, orientations)
-    opencl_result = tg.local.evaluate(model, parameters, orientations)
+    opencl_result = tg.local.evaluate(model, parameters, orientations, OpenCLRuntime())
 
     assert model.n_parameters == 6
     np.testing.assert_allclose(numpy_result, expected, rtol=1e-6, atol=1e-6)

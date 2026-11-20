@@ -5,17 +5,15 @@ from string import Template
 from typing import Any
 
 import numpy as np
-import pyopencl as cl
 import pyopencl.cltypes as clt
 
 from .core import ishtmtx, cart2sph
+from .opencl import BufferAccess, OpenCLRuntime
 
 type Orientations = np.ndarray[tuple[int, int], Any]
 type LocalModelValues = np.ndarray[tuple[int, int], np.dtype[clt.float]]
 
 _OPENCL_DIR = files("tractography.resources") / "kernels"
-READ_ONLY = cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR
-WRITE_ONLY = cl.mem_flags.WRITE_ONLY
 SOFTMAX_SCALE = 100.0
 
 
@@ -286,6 +284,7 @@ def evaluate(
         model: BaseLocalModel,
         parameters: np.ndarray,
         orientations: Orientations,
+        runtime: OpenCLRuntime | None = None,
     ) -> LocalModelValues:
     """Evaluate a local model at multiple orientations using OpenCL.
 
@@ -295,6 +294,7 @@ def evaluate(
                 (n_orientations, n_parameters).
         orientations: Array of shape (n_orientations, 3) containing the
                       xyz coordinates of the orientations.
+        runtime: Optional runtime to reuse. A runtime is created when omitted.
 
     Returns:
         For non-empty input, an array with one row per orientation and
@@ -307,10 +307,8 @@ def evaluate(
     n_orientations = orientations.shape[0]
     if n_orientations == 0:
         return np.empty((0, 3), dtype=clt.float)
-
-    # Create the global OpenCL context.
-    _context = cl.create_some_context(interactive=False)
-    _queue = cl.CommandQueue(_context)
+    if runtime is None:
+        runtime = OpenCLRuntime()
 
     # Create the OpenCL program from the domain source.
     source = model.get_source() + Template("""
@@ -336,16 +334,18 @@ def evaluate(
 
     # Create the OpenCL buffer for the model parameters.
     parameters_data = np.ascontiguousarray(parameters, dtype=clt.float)
-    model_buffer = cl.Buffer(_context, READ_ONLY, hostbuf=parameters_data)
+    model_buffer = runtime.buffer_from_array(parameters_data, BufferAccess.READ_ONLY)
     
     # Orientations are stored as a 2D array of shape (n_orientations, 3).
     orientations_data = np.zeros((n_orientations, 4), dtype=clt.float)
     orientations_data[:, :3] = orientations
-    orientations_buffer = cl.Buffer(_context, READ_ONLY, hostbuf=orientations_data)
+    orientations_buffer = runtime.buffer_from_array(
+        orientations_data, BufferAccess.READ_ONLY
+    )
 
     # Prepare the results buffer.
     result = np.empty((n_orientations, 3), dtype=clt.float)
-    results_buffer = cl.Buffer(_context, WRITE_ONLY, size=result.nbytes)
+    results_buffer = runtime.allocate_buffer(result.nbytes)
     args = [
         model_buffer,
         orientations_buffer,
@@ -354,8 +354,8 @@ def evaluate(
     ]
 
     # Run and transfer the results back to the host.
-    program = cl.Program(_context, source).build(f"-I {_OPENCL_DIR}")
-    program.evaluate(_queue, (n_orientations,), None, *args)
-    cl.enqueue_copy(_queue, result, results_buffer)
+    program = runtime.build_program(source, options=("-I", str(_OPENCL_DIR)))
+    program.evaluate(runtime.queue, (n_orientations,), None, *args)
+    runtime.copy_from_buffer(results_buffer, result, is_blocking=True)
 
     return result

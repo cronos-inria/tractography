@@ -5,6 +5,7 @@ import nibabel as nib
 import numpy as np
 
 import tractography as tg
+from tractography.opencl import OpenCLRuntime
 import test.data.tensor
 from test.test_algorithms import run_tractogram
 from test.test_algorithms.exact_solutions import (
@@ -80,7 +81,7 @@ class TestTractogram(unittest.TestCase):
         fod = test.data.uniform_isotropic()
         affine = np.eye(4)
         nii = nib.nifti1.Nifti1Image(fod, affine)
-        seeds = tg.seeds.from_fod(nii, 1000)
+        seeds = tg.seeds.from_fod(nii, 1000, runtime=OpenCLRuntime())
 
         # Generate the tractogram.
         tracto = run_tractogram(nii, seeds, tg.algorithm.Diffusion)

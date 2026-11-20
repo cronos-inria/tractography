@@ -2,6 +2,7 @@ import numpy as np
 from nibabel.nifti1 import Nifti1Image
 
 import tractography as tg
+from tractography.opencl import OpenCLRuntime
 
 
 def test_field_evaluate():
@@ -27,7 +28,9 @@ def test_field_evaluate_rounds_half_voxels_to_even():
     expected = data[[0, 2, 0], [2, 0, 2], [2, 0, 2]]
 
     np.testing.assert_array_equal(field.evaluate(points), expected)
-    np.testing.assert_array_equal(tg.field.evaluate(field, points), expected)
+    np.testing.assert_array_equal(
+        tg.field.evaluate(field, points, OpenCLRuntime()), expected
+    )
 
 
 def test_field_evaluate_returns_zero_outside_image():
@@ -38,7 +41,9 @@ def test_field_evaluate_returns_zero_outside_image():
 
     expected = np.zeros((3, 2), dtype=np.float32)
     np.testing.assert_array_equal(field.evaluate(points), expected)
-    np.testing.assert_array_equal(tg.field.evaluate(field, points), expected)
+    np.testing.assert_array_equal(
+        tg.field.evaluate(field, points, OpenCLRuntime()), expected
+    )
 
 
 def test_field_evaluate_empty_points():
