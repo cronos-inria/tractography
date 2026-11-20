@@ -1,1 +1,0 @@
-"""OpenCL support modules used by tractography algorithms."""
