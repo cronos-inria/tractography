@@ -5,19 +5,17 @@ from nibabel.nifti1 import Nifti1Image
 from nibabel.spatialimages import SpatialImage
 from nibabel.streamlines.tractogram import Tractogram
 import numpy as np
-import pyopencl as cl
 import pyopencl.cltypes as clt
 from scipy.sparse import coo_matrix, csr_matrix
 
 from .algorithm import BaseAlgorithm
 from .domain import BaseDomain
 from .field import BaseField
+from .opencl import BufferAccess, OpenCLRuntime
 from .utils import normalize_odf
 
 
 _OPENCL_DIR = files("tractography.resources") / "kernels"
-READ_ONLY = cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR
-WRITE_ONLY = cl.mem_flags.WRITE_ONLY
 
 
 def tractogram(
@@ -27,6 +25,7 @@ def tractogram(
         seeds: np.ndarray,
         save_at: float = 1.0,
         maximum_streamline_length: float = 300.0,
+        runtime: OpenCLRuntime | None = None,
     ) -> Tractogram:
     """Track streamlines from position-and-orientation seeds.
 
@@ -50,6 +49,7 @@ def tractogram(
             coordinate units used by the inputs. Defaults to ``1.0``.
         maximum_streamline_length: Maximum length reserved for each
             streamline, in the same units. Defaults to ``300.0``.
+        runtime: Optional runtime to reuse. One is created when omitted.
 
     Returns:
         A NiBabel ``Tractogram`` containing one streamline per seed, with
@@ -78,14 +78,12 @@ def tractogram(
     n_seeds = seeds.shape[0]
     if n_seeds == 0:
         return Tractogram([], affine_to_rasmm=np.eye(4))
+    if runtime is None:
+        runtime = OpenCLRuntime()
 
     # Compute the maximum number of steps based on the maximum streamline
     # length and the save interval.
     n_steps = int(np.floor(maximum_streamline_length / save_at))
-
-    # Create the global OpenCL context.
-    _context = cl.create_some_context(interactive=False)
-    _queue = cl.CommandQueue(_context)
 
     # Create the OpenCL program from the domain source.
     source = domain.get_source() + field.get_source() + algorithm.get_source()
@@ -153,15 +151,15 @@ def tractogram(
     seeds_data = np.zeros((n_seeds, 8), dtype=clt.float)
     seeds_data[:, :3] = seeds[:, :3]
     seeds_data[:, 4:7] = seeds[:, 3:]
-    seeds_buffer = cl.Buffer(_context, READ_ONLY, hostbuf=seeds_data)
+    seeds_buffer = runtime.buffer_from_array(seeds_data, BufferAccess.READ_ONLY)
 
     # Prepare the streamlines buffer.
     streamlines = np.zeros((n_seeds, n_steps, 4), dtype=clt.float)
-    streamlines_buffer = cl.Buffer(_context, WRITE_ONLY, size=streamlines.nbytes)
+    streamlines_buffer = runtime.allocate_buffer(streamlines.nbytes)
     lengths = np.zeros((n_seeds,), dtype=np.uint32)
-    lengths_buffer = cl.Buffer(_context, WRITE_ONLY, size=lengths.nbytes)
+    lengths_buffer = runtime.allocate_buffer(lengths.nbytes)
 
-    args = domain.get_args(_context) + field.get_args(_context) + algorithm.get_args()
+    args = domain.get_args(runtime) + field.get_args(runtime) + algorithm.get_args()
     args += [
         clt.uint(algorithm.get_rng_seed()),
         seeds_buffer,
@@ -172,10 +170,10 @@ def tractogram(
     ]
 
     # Run and transfer the results back to the host.
-    program = cl.Program(_context, source).build(f"-I {_OPENCL_DIR}")
-    program.tractogram(_queue, (n_seeds,), None, *args)
-    cl.enqueue_copy(_queue, streamlines, streamlines_buffer)
-    cl.enqueue_copy(_queue, lengths, lengths_buffer)
+    program = runtime.build_program(source, options=("-I", str(_OPENCL_DIR)))
+    program.tractogram(runtime.queue, (n_seeds,), None, *args)
+    runtime.copy_from_buffer(streamlines_buffer, streamlines, is_blocking=True)
+    runtime.copy_from_buffer(lengths_buffer, lengths, is_blocking=True)
 
     return Tractogram([streamlines[i, :n, :3] for i, n in enumerate(lengths)], affine_to_rasmm=np.eye(4))
 
@@ -187,6 +185,7 @@ def tod(
     image: SpatialImage,
     n_seeds: int,
     maximum_streamline_length: float = 300.0,
+    runtime: OpenCLRuntime | None = None,
 ) -> Nifti1Image:
     """Estimate a track orientation distribution (TOD) as SH coefficients.
 
@@ -203,6 +202,7 @@ def tod(
         n_seeds: Number of boundary-seeded tracks to generate.
         maximum_streamline_length: Maximum propagation distance, in the
             coordinate units used by the domain and field.
+        runtime: Optional runtime to reuse. One is created when omitted.
 
     Returns:
         A NIfTI image with shape ``image.shape + (45,)`` containing normalized
@@ -243,8 +243,8 @@ def tod(
         header.set_data_dtype(np.float32)
         return Nifti1Image(normalize_odf(raw_tod), affine, header=header)
 
-    context = cl.create_some_context(interactive=False)
-    queue = cl.CommandQueue(context)
+    if runtime is None:
+        runtime = OpenCLRuntime()
     source = domain.get_source() + field.get_source() + algorithm.get_source()
     source += '#include "utils/spharm.cl"\n'
     source += Template(r"""
@@ -361,15 +361,13 @@ def tod(
     })
 
     output_dims = np.asarray((*output_shape, 0), dtype=np.uint32)
-    inverse_affine_buffer = cl.Buffer(
-        context, READ_ONLY, hostbuf=np.ascontiguousarray(inverse_affine)
+    inverse_affine_buffer = runtime.buffer_from_array(
+        np.ascontiguousarray(inverse_affine), BufferAccess.READ_ONLY
     )
-    coefficients_buffer = cl.Buffer(
-        context,
-        cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR,
-        hostbuf=raw_tod,
+    coefficients_buffer = runtime.buffer_from_array(
+        raw_tod, BufferAccess.READ_WRITE
     )
-    args = domain.get_args(context) + field.get_args(context) + algorithm.get_args()
+    args = domain.get_args(runtime) + field.get_args(runtime) + algorithm.get_args()
     args += [
         clt.uint(algorithm.get_rng_seed()),
         clt.uint(n_seeds),
@@ -378,9 +376,9 @@ def tod(
         coefficients_buffer,
     ]
 
-    program = cl.Program(context, source).build(f"-I {_OPENCL_DIR}")
-    program.tod(queue, (n_seeds,), None, *args)
-    cl.enqueue_copy(queue, raw_tod, coefficients_buffer)
+    program = runtime.build_program(source, options=("-I", str(_OPENCL_DIR)))
+    program.tod(runtime.queue, (n_seeds,), None, *args)
+    runtime.copy_from_buffer(coefficients_buffer, raw_tod, is_blocking=True)
 
     header = image.header.copy()
     header.set_data_dtype(np.float32)
@@ -394,6 +392,7 @@ def connectome(
     n_seeds: int,
     maximum_streamline_length: float = 300.0,
     minimum_streamline_length: float = 0.0,
+    runtime: OpenCLRuntime | None = None,
 ) -> csr_matrix:
     """Estimate an asymmetric, piecewise-linear boundary connectome.
 
@@ -416,6 +415,7 @@ def connectome(
             coordinate units used by the domain and field.
         minimum_streamline_length: Minimum distance actually propagated for a
             track to contribute. Defaults to zero.
+        runtime: Optional runtime to reuse. One is created when omitted.
 
     Returns:
         A directed floating-point ``(n_vertices, n_vertices)`` SciPy CSR
@@ -459,8 +459,8 @@ def connectome(
     if n_steps == 0:
         return csr_matrix((n_vertices, n_vertices), dtype=np.float32)
 
-    context = cl.create_some_context(interactive=False)
-    queue = cl.CommandQueue(context)
+    if runtime is None:
+        runtime = OpenCLRuntime()
     source = domain.get_source() + field.get_source() + algorithm.get_source()
     source += Template(r"""
     __kernel void connectome(
@@ -567,10 +567,10 @@ def connectome(
     contribution_rows = np.full(n_contributions, -1, dtype=np.int32)
     contribution_columns = np.full(n_contributions, -1, dtype=np.int32)
     contribution_weights = np.zeros(n_contributions, dtype=np.float32)
-    rows_buffer = cl.Buffer(context, WRITE_ONLY, size=contribution_rows.nbytes)
-    columns_buffer = cl.Buffer(context, WRITE_ONLY, size=contribution_columns.nbytes)
-    weights_buffer = cl.Buffer(context, WRITE_ONLY, size=contribution_weights.nbytes)
-    args = domain.get_args(context) + field.get_args(context) + algorithm.get_args()
+    rows_buffer = runtime.allocate_buffer(contribution_rows.nbytes)
+    columns_buffer = runtime.allocate_buffer(contribution_columns.nbytes)
+    weights_buffer = runtime.allocate_buffer(contribution_weights.nbytes)
+    args = domain.get_args(runtime) + field.get_args(runtime) + algorithm.get_args()
     args += [
         clt.uint(algorithm.get_rng_seed()),
         clt.uint(n_seeds),
@@ -580,11 +580,11 @@ def connectome(
         weights_buffer,
     ]
 
-    program = cl.Program(context, source).build(f"-I {_OPENCL_DIR}")
-    program.connectome(queue, (n_seeds,), None, *args)
-    cl.enqueue_copy(queue, contribution_rows, rows_buffer)
-    cl.enqueue_copy(queue, contribution_columns, columns_buffer)
-    cl.enqueue_copy(queue, contribution_weights, weights_buffer)
+    program = runtime.build_program(source, options=("-I", str(_OPENCL_DIR)))
+    program.connectome(runtime.queue, (n_seeds,), None, *args)
+    runtime.copy_from_buffer(rows_buffer, contribution_rows, is_blocking=True)
+    runtime.copy_from_buffer(columns_buffer, contribution_columns, is_blocking=True)
+    runtime.copy_from_buffer(weights_buffer, contribution_weights, is_blocking=True)
 
     valid = contribution_rows >= 0
     if not np.any(valid):

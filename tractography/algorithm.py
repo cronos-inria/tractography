@@ -5,16 +5,14 @@ from typing import Any
 from importlib.resources import files
 
 import numpy as np
-import pyopencl as cl
 import pyopencl.cltypes as clt
 from scipy.optimize import minimize
 
 from .local import BaseLocalModel, Orientations
 from .core import cart2sph
+from .opencl import BufferAccess, OpenCLRuntime
 
 _OPENCL_DIR = files("tractography.resources") / "kernels"
-READ_ONLY = cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR
-WRITE_ONLY = cl.mem_flags.WRITE_ONLY
 
 
 class Algorithm(Enum):
@@ -700,13 +698,19 @@ def exps2(p: np.ndarray, x: np.ndarray, t: float) -> np.ndarray:
     return c[:, np.newaxis] * p + x * scaled_sine[:, np.newaxis]
 
 
-def update_orientation(algorithm: BaseAlgorithm, local_models: np.ndarray, orientations: Orientations) -> Orientations:
+def update_orientation(
+    algorithm: BaseAlgorithm,
+    local_models: np.ndarray,
+    orientations: Orientations,
+    runtime: OpenCLRuntime | None = None,
+) -> Orientations:
     """Update orientations using the OpenCL implementation.
 
     Args:
         algorithm: Orientation-update algorithm and its local model.
         local_models: Model parameters, with one row per orientation.
         orientations: Input directions with shape ``(n_orientations, 3)``.
+        runtime: Optional runtime to reuse. A runtime is created when omitted.
 
     Returns:
         Updated directions with shape ``(n_orientations, 3)``.
@@ -720,6 +724,8 @@ def update_orientation(algorithm: BaseAlgorithm, local_models: np.ndarray, orien
     n_orientations = orientations.shape[0]
     if n_orientations == 0:
         return np.empty((0, 3), dtype=np.float32)
+    if runtime is None:
+        runtime = OpenCLRuntime()
 
     # Verify the local model shape.
     if local_models.ndim != 2 or local_models.shape[1] != algorithm.local_model.n_parameters or local_models.shape[0] != n_orientations:
@@ -727,10 +733,6 @@ def update_orientation(algorithm: BaseAlgorithm, local_models: np.ndarray, orien
             f"Expected local_models to have shape ({n_orientations}, {algorithm.local_model.n_parameters}), "
             f"but got {local_models.shape}"
         )
-
-    # Create the global OpenCL context.
-    _context = cl.create_some_context(interactive=False)
-    _queue = cl.CommandQueue(_context)
 
     # Create the OpenCL program from the domain source.
     source = algorithm.get_source() + Template("""
@@ -757,17 +759,21 @@ def update_orientation(algorithm: BaseAlgorithm, local_models: np.ndarray, orien
     """).substitute(N_PARAMETERS=algorithm.local_model.n_parameters)
 
     local_models_data = np.ascontiguousarray(local_models, dtype=clt.float)
-    local_models_buffer = cl.Buffer(_context, READ_ONLY, hostbuf=local_models_data)
+    local_models_buffer = runtime.buffer_from_array(
+        local_models_data, BufferAccess.READ_ONLY
+    )
     
     # Orientations are stored in a (n_points, 4) array with the last component set
     # to 0 to match the OpenCL float4 format.
     orientations_data = np.zeros((n_orientations, 4), dtype=clt.float)
     orientations_data[:, :3] = orientations
-    orientations_buffer = cl.Buffer(_context, READ_ONLY, hostbuf=orientations_data)
+    orientations_buffer = runtime.buffer_from_array(
+        orientations_data, BufferAccess.READ_ONLY
+    )
 
     # Prepare the results buffer.
     result = np.empty((n_orientations, 4), dtype=clt.float)
-    results_buffer = cl.Buffer(_context, WRITE_ONLY, size=result.nbytes)
+    results_buffer = runtime.allocate_buffer(result.nbytes)
     args = algorithm.get_args() + [
         clt.uint(algorithm.get_rng_seed()),
         local_models_buffer,
@@ -777,8 +783,8 @@ def update_orientation(algorithm: BaseAlgorithm, local_models: np.ndarray, orien
     ]
 
     # Run and transfer the results back to the host.
-    program = cl.Program(_context, source).build(f"-I {_OPENCL_DIR}")
-    program.update_orientation(_queue, (n_orientations,), None, *args)
-    cl.enqueue_copy(_queue, result, results_buffer)
+    program = runtime.build_program(source, options=("-I", str(_OPENCL_DIR)))
+    program.update_orientation(runtime.queue, (n_orientations,), None, *args)
+    runtime.copy_from_buffer(results_buffer, result, is_blocking=True)
 
     return result[:, :3].copy()
