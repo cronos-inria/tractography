@@ -3356,7 +3356,7 @@ packages:
 - pypi: ./
   name: tractography
   version: 0.3.0
-  sha256: 4ef58642d027bddc16b05c3d1b0549e2e32a6a532f48285db47cd0fa0dc14bb2
+  sha256: 1d611aa9d15bfddd991cc5680697776b092e2d42629caf1d1e1800b10f8c87a0
   requires_dist:
   - numpy>=2.0
   - scikit-image>=0.25

@@ -1,17 +1,17 @@
-import unittest
-
 import numpy as np
 import pyopencl as cl
+import pytest
 
 import tractography as tg
 from tractography.opencl import BufferAccess, OpenCLRuntime
 
 
-class TestCore(unittest.TestCase):
+class TestCore:
     """Test the OpenCL implementation of core functions"""
 
+    @pytest.fixture(scope="class", autouse=True)
     @classmethod
-    def setUpClass(cls):
+    def setup_runtime(cls):
         cls.runtime = OpenCLRuntime()
 
     def test_randu(self):
@@ -31,8 +31,8 @@ class TestCore(unittest.TestCase):
             np.uint32(n_values),
         )
         self.runtime.copy_from_buffer(values_buffer, values, is_blocking=True)
-        self.assertTrue(values.min() > 0)
-        self.assertTrue(values.max() < 1)
+        assert values.min() > 0
+        assert values.max() < 1
 
     def test_randi(self):
         """Test OpenCL generation of uniform integers"""
@@ -52,15 +52,16 @@ class TestCore(unittest.TestCase):
             np.uint32(100),
         )
         self.runtime.copy_from_buffer(values_buffer, values, is_blocking=True)
-        self.assertTrue(values.min() >= 0)
-        self.assertTrue(values.max() <= 99)
+        assert values.min() >= 0
+        assert values.max() <= 99
 
 
-class TestSpharm(unittest.TestCase):
+class TestSpharm:
     """Test the OpenCL implementation of spherical harmonic functions"""
 
+    @pytest.fixture(scope="class", autouse=True)
     @classmethod
-    def setUpClass(cls):
+    def setup_runtime(cls):
         cls.runtime = OpenCLRuntime()
 
     def test_ishtmtx_antipodal_symmetry(self):

@@ -1,6 +1,3 @@
-import unittest
-from pathlib import Path
-
 import numpy as np
 
 import tractography as tg
@@ -8,15 +5,8 @@ from tractography.opencl import BufferAccess, OpenCLRuntime
 from test.opencl_helpers import build_test_kernel_program
 
 
-_OPENCL_DIR = Path(__file__).parents[2] / "src"
-_TEST_RESULTS_DIR = Path(__file__).parents[2] / "test-results" / "algorithms" / "core"
-
-
-class TestCore(unittest.TestCase):
+class TestCore:
     """Test the OpenCL implementation of core functions"""
-
-    def setUp(self):
-        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     def test_cart2sph(self):
         """Test the cart2sph function"""

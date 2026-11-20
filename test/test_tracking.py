@@ -246,7 +246,7 @@ def test_connectome_cross_dataset_connects_expected_regions():
 	)
 
 	np.testing.assert_array_equal(labels, [1, 2, 3, 4])
-	undirected = matrix.toarray() + matrix.toarray().T
+	undirected = matrix + matrix.T
 	expected_partners = [1, 0, 3, 2]
 	for region, partner in enumerate(expected_partners):
 		competing_weights = np.delete(undirected[region], [region, partner])

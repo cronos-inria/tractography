@@ -1,6 +1,3 @@
-import unittest
-from pathlib import Path
-
 import nibabel as nib
 import numpy as np
 
@@ -11,12 +8,7 @@ from test.test_algorithms import run_tractogram
 from test.test_algorithms.exact_solutions import u0u3_coefficients
 
 
-_TEST_RESULTS_DIR = (
-    Path(__file__).parents[2] / "test-results" / "algorithms" / "probabilistic"
-)
-
-
-class TestExactSolutions(unittest.TestCase):
+class TestExactSolutions:
     def test_exact_zero_angle_limit(self):
         """A zero-radius sampling cap leaves a unit orientation unchanged."""
         algorithm = tg.algorithm.Probabilistic(
@@ -32,11 +24,8 @@ class TestExactSolutions(unittest.TestCase):
         np.testing.assert_allclose(result, initial, atol=1e-6)
 
 
-class TestProbabilistic(unittest.TestCase):
+class TestProbabilistic:
     """Test the OpenCL implementation of Probabilistic tractography"""
-
-    def setUp(self):
-        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     def test_uniform_isotropic(self):
         """Test probabilistic tractography on a uniform isotropic fOD field"""
@@ -46,31 +35,15 @@ class TestProbabilistic(unittest.TestCase):
         affine = np.eye(4)
         nii = nib.nifti1.Nifti1Image(fod, affine)
         seeds = tg.seeds.from_fod(nii, 1000, runtime=OpenCLRuntime())
-        nib.save(nii, _TEST_RESULTS_DIR / "uniform-fod.nii.gz")
-
         # Generate the tractogram.
-        tracto = run_tractogram(nii, seeds, tg.algorithm.Probabilistic)
-        streamlines = tracto.streamlines
-
-        # Save the streamlines for QA.
-        tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
-        tck = nib.streamlines.TckFile(tractogram)
-        tck.save(_TEST_RESULTS_DIR / "uniform-streamlines.tck")
+        run_tractogram(nii, seeds, tg.algorithm.Probabilistic)
 
     def test_cross(self):
         """Test tractography on the cross dataset"""
 
         # Prepare the data.
         fod, wm, _ = test.data.cross()
-        nib.save(fod, _TEST_RESULTS_DIR / "cross-fod.nii.gz")
-        nib.save(wm, _TEST_RESULTS_DIR / "cross-wm.nii.gz")
         seeds = tg.seeds.from_mask(wm, 1000)
 
         # Generate the tractogram.
-        tracto = run_tractogram(fod, seeds, tg.algorithm.Probabilistic)
-        streamlines = tracto.streamlines
-
-        # Save the streamlines for QA.
-        tractogram = nib.streamlines.Tractogram(streamlines, affine_to_rasmm=np.eye(4))
-        tck = nib.streamlines.TckFile(tractogram)
-        tck.save(_TEST_RESULTS_DIR / "cross-streamlines.tck")
+        run_tractogram(fod, seeds, tg.algorithm.Probabilistic)

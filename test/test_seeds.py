@@ -1,19 +1,14 @@
-import tempfile
-import unittest
 from collections import namedtuple
-from pathlib import Path
 from unittest.mock import patch
 
 import nibabel as nib
 import numpy as np
+import pytest
 
 import tractography as tg
 from tractography.opencl import OpenCLRuntime
 import test
 import test.data.tensor
-
-_TEST_RESULTS_DIR = Path(__file__).parents[1] / "test-results" / "seeds"
-
 
 def test_validate_seed_array_returns_contiguous_float32():
     """The public validator normalizes dtype and memory layout."""
@@ -27,8 +22,8 @@ def test_validate_seed_array_returns_contiguous_float32():
     assert validated.flags.c_contiguous
 
 
-class TestFromSurface(unittest.TestCase):
-    def test_simple(self):
+class TestFromSurface:
+    def test_simple(self, tmp_path):
         """Test the simplest use-case"""
 
         Surface = namedtuple("Surface", ["vertices", "triangles"])
@@ -39,8 +34,8 @@ class TestFromSurface(unittest.TestCase):
         seeds = tg.seeds.from_surface(surface, 10)
 
         # Seeds use one homogeneous eight-column representation.
-        self.assertEqual(seeds.shape, (10, 8))
-        self.assertEqual(seeds.dtype, np.float32)
+        assert seeds.shape == (10, 8)
+        assert seeds.dtype == np.float32
         np.testing.assert_array_equal(seeds[:, 3], 1.0)
         np.testing.assert_array_equal(seeds[:, 7], 0.0)
 
@@ -49,9 +44,9 @@ class TestFromSurface(unittest.TestCase):
         np.testing.assert_almost_equal(lengths, np.ones((10,)))
 
         # Test simple saving and loading to .tck.
-        with tempfile.TemporaryDirectory() as d:
-            tg.seeds.save(Path(d) / "cross-seeds-from-surface.txt", seeds)
-            loaded = tg.seeds.load(Path(d) / "cross-seeds-from-surface.txt")
+        seeds_path = tmp_path / "cross-seeds-from-surface.txt"
+        tg.seeds.save(seeds_path, seeds)
+        loaded = tg.seeds.load(seeds_path)
 
         np.testing.assert_array_almost_equal(loaded[:, :3], seeds[:, :3])
         np.testing.assert_array_almost_equal(loaded[:, 4:7], seeds[:, 4:7])
@@ -59,7 +54,7 @@ class TestFromSurface(unittest.TestCase):
         seeds = tg.seeds.from_surface(surface, 10, cone_angle=25)
 
         # The correct number of seeds.
-        self.assertEqual(seeds.shape, (10, 8))
+        assert seeds.shape == (10, 8)
 
         # The normal is unit length.
         lengths = np.linalg.norm(seeds[:, 4:7], axis=1)
@@ -68,36 +63,36 @@ class TestFromSurface(unittest.TestCase):
         # The angle is respected.
         for orientation in seeds[1:, 4:7]:
             angle = np.rad2deg(np.arccos(np.dot(seeds[0, 4:7], orientation)))
-            self.assertTrue(angle <= 50)
+            assert angle <= 50
 
 
-class TestFromODF(unittest.TestCase):
-    def test_simple(self):
+class TestFromODF:
+    def test_simple(self, tmp_path):
         """Test the simplest use-case"""
 
         fod, wm, _ = test.data.cross()
         seeds = tg.seeds.from_mask(wm, 1000)
 
         seeds = tg.seeds.from_fod(fod, 10000, use_opencl=False)
-        self.assertEqual(seeds.shape, (10000, 8))
+        assert seeds.shape == (10000, 8)
 
         # Test simple saving and loading to .tck.
-        with tempfile.TemporaryDirectory() as d:
-            tg.seeds.save(Path(d) / "cross-seeds-from-fod.tck", seeds)
-            loaded = tg.seeds.load(Path(d) / "cross-seeds-from-fod.tck")
+        seeds_path = tmp_path / "cross-seeds-from-fod.tck"
+        tg.seeds.save(seeds_path, seeds)
+        loaded = tg.seeds.load(seeds_path)
 
         np.testing.assert_array_almost_equal(loaded[:, :3], seeds[:, :3])
         np.testing.assert_array_almost_equal(loaded[:, 4:7], seeds[:, 4:7])
 
         # Every backend returns the canonical array layout.
         seeds = tg.seeds.from_fod(fod, 10000, use_opencl=False)
-        self.assertEqual(seeds.shape, (10000, 8))
+        assert seeds.shape == (10000, 8)
 
         # Saving and loading in an unknow filetype raises and error.
-        self.assertRaises(
-            ValueError, lambda: tg.seeds.save(Path(d) / "oups.tyk", seeds)
-        )
-        self.assertRaises(ValueError, lambda: tg.seeds.load(Path(d) / "oups.tyk"))
+        with pytest.raises(ValueError):
+            tg.seeds.save(tmp_path / "oups.tyk", seeds)
+        with pytest.raises(ValueError):
+            tg.seeds.load(tmp_path / "oups.tyk")
 
     def test_empty_opencl_request_does_not_create_runtime(self):
         fod, _, _ = test.data.cross()
@@ -110,11 +105,8 @@ class TestFromODF(unittest.TestCase):
         runtime_factory.assert_not_called()
 
 
-class TestOpenCLFromFOD(unittest.TestCase):
+class TestOpenCLFromFOD:
     """Test generating seeds on using the OpenCL implementation"""
-
-    def setUp(self):
-        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     def test_simple(self):
         """Test the simple case of generating seeds using OpenCL"""
@@ -130,16 +122,9 @@ class TestOpenCLFromFOD(unittest.TestCase):
         )
 
         # All points must be in the grid.
-        self.assertTrue(np.all(seeds[:, :3] >= -0.5))
-        self.assertTrue(np.all(seeds[:, :3] <= 9.5))
-        self.assertTrue(np.allclose(np.linalg.norm(seeds[:, 4:7], axis=1), 1))
-
-        # Save the seeds for QA.
-        nib.save(fod, _TEST_RESULTS_DIR / "gpu-simple-fod.nii.gz")
-        nib.save(mask, _TEST_RESULTS_DIR / "gpu-simple-wm.nii.gz")
-        tg.seeds.save(
-            _TEST_RESULTS_DIR / "gpu-simple-seeds.tck", seeds
-        )
+        assert np.all(seeds[:, :3] >= -0.5)
+        assert np.all(seeds[:, :3] <= 9.5)
+        assert np.allclose(np.linalg.norm(seeds[:, 4:7], axis=1), 1)
 
     @staticmethod
     def _orientation_second_moment(orientations, weights=None):

@@ -53,10 +53,9 @@ pytest = { version = "*", channel = "conda-forge" }
 
 [tool.pixi.tasks]
 tractography = "tractography"
-test = "python -c 'import tractography'"
-unittest = "python -m unittest"
-test-examples = "python -m unittest discover -s test/integration -v"
-coverage = "coverage run -m unittest -v && coverage report && coverage html"
+test = "PYTHONDONTWRITEBYTECODE=1 pytest -p no:cacheprovider test --ignore-glob='*/integration/*'"
+test-examples = "pytest -p no:cacheprovider test/integration -v"
+coverage = "PYTHONDONTWRITEBYTECODE=1 COVERAGE_FILE=/tmp/tractography-coverage coverage run -m pytest -p no:cacheprovider test --ignore-glob='*/integration/*' -v && COVERAGE_FILE=/tmp/tractography-coverage coverage report && COVERAGE_FILE=/tmp/tractography-coverage coverage html -d /tmp/tractography-coverage-html"
 doc = "mkdocs gh-deploy --config-file mkdocs.yml --force"
 
 [tool.pixi.feature.cpu.dependencies]

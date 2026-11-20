@@ -1,26 +1,17 @@
-import unittest
-from pathlib import Path
-
 import nibabel as nib
 import numpy as np
+import pytest
 import scipy.interpolate as si
 
 import tractography as tg
 from tractography.opencl import BufferAccess, OpenCLRuntime
-from tractography.opencl import OpenCLRuntime
 import test
 import test.data.tensor
 from test.test_algorithms import run_tractogram
 from test.opencl_helpers import build_test_kernel_program
 
 
-_OPENCL_DIR = Path(__file__).parents[2] / "src"
-_TEST_RESULTS_DIR = (
-    Path(__file__).parents[2] / "test-results" / "algorithms" / "transport"
-)
-
-
-class TestExactSolutions(unittest.TestCase):
+class TestExactSolutions:
     """Test the transport tractography kernel against numerically integrable FODs.
 
     The transport equation propagates a fibre orientation U along the gradient
@@ -153,11 +144,12 @@ class TestExactSolutions(unittest.TestCase):
         np.testing.assert_array_almost_equal(streamline, expected, decimal=3)
 
 
-class TestTractogram(unittest.TestCase):
+class TestTractogram:
     """Test the OpenCL implementation of Transport tractography"""
 
+    @pytest.fixture(scope="class", autouse=True)
     @classmethod
-    def setUpClass(cls):
+    def setup_runtime(cls):
         cls.runtime = OpenCLRuntime()
 
     def test_uniform_isotropic(self):
@@ -244,7 +236,7 @@ class TestTractogram(unittest.TestCase):
 
         # The streamlines should run until the maximum lenght is reached.
         length = len(streamlines[0]) * 0.25
-        self.assertAlmostEqual(length, maximum_length)
+        assert length == pytest.approx(maximum_length)
 
     def test_mod(self):
         """Test the modulo operation"""

@@ -1,12 +1,10 @@
-import unittest
-
 import nibabel as nib
 import numpy as np
 
 import tractography as tg
 
 
-class TestMultiply(unittest.TestCase):
+class TestMultiply:
 
     def create_nifti(self, shape, fill_value=1, affine=None):
         """Helper to create synthetic NIfTI images."""
@@ -24,7 +22,7 @@ class TestMultiply(unittest.TestCase):
         result = tg.nifti.multiply(img1, img2)
 
         # 2 * 3 = 6
-        np.testing.assert_array_equal(result.get_fdata(), np.full(shape, 6.0))
+        assert np.array_equal(result.get_fdata(), np.full(shape, 6.0))
         np.testing.assert_array_equal(result.affine, img1.affine)
 
     def test_resampling_with_shift(self):
@@ -54,7 +52,7 @@ class TestMultiply(unittest.TestCase):
         # Therefore, result at (1,1,1) should pick up the 100.
         result = tg.nifti.multiply(left, right, order=0)
 
-        self.assertEqual(result.get_fdata()[1, 1, 1], 100)
+        assert result.get_fdata()[1, 1, 1] == 100
 
     def test_interpolation_order(self):
         """
@@ -81,7 +79,7 @@ class TestMultiply(unittest.TestCase):
         res_1 = tg.nifti.multiply(left, right, order=1)
 
         # We just check that they are not identical bit-wise.
-        self.assertFalse(np.array_equal(res_0.get_fdata(), res_1.get_fdata()))
+        assert not np.array_equal(res_0.get_fdata(), res_1.get_fdata())
 
     def test_non_commutative_geometry(self):
         """
@@ -95,16 +93,16 @@ class TestMultiply(unittest.TestCase):
 
         # Case A: Small * Large -> Result should be Small
         res_small = tg.nifti.multiply(img_small, img_large)
-        self.assertEqual(res_small.shape, shape_small)
+        assert res_small.shape == shape_small
         np.testing.assert_array_equal(res_small.affine, img_small.affine)
 
         # Case B: Large * Small -> Result should be Large
         res_large = tg.nifti.multiply(img_large, img_small)
-        self.assertEqual(res_large.shape, shape_large)
+        assert res_large.shape == shape_large
         np.testing.assert_array_equal(res_large.affine, img_large.affine)
 
 
-class TestThreshold(unittest.TestCase):
+class TestThreshold:
 
     def test_threshold_logic(self):
         """Test that values are correctly binarized based on the threshold."""
@@ -136,10 +134,10 @@ class TestThreshold(unittest.TestCase):
         np.testing.assert_array_equal(result.affine, affine)
 
         # Check header data type.
-        self.assertEqual(result.header.get_data_dtype(), np.uint8)
+        assert result.header.get_data_dtype() == np.uint8
 
         # Check array data type.
-        self.assertEqual(result.dataobj.dtype, np.uint8)
+        assert result.dataobj.dtype == np.uint8
 
     def test_all_or_nothing(self):
         """Test cases where all voxels are above or below threshold."""
@@ -149,7 +147,7 @@ class TestThreshold(unittest.TestCase):
 
         # Case 1: Threshold higher than all data.
         res_zeros = tg.nifti.threshold(img, value=20.0)
-        self.assertEqual(res_zeros.get_fdata().sum(), 0)
+        assert res_zeros.get_fdata().sum() == 0
 
         # Case 2: Threshold lower than all data.
         res_ones = tg.nifti.threshold(img, value=5.0)
