@@ -7,6 +7,7 @@ import nibabel as nib
 import numpy as np
 
 import tractography as tg
+from tractography.opencl import OpenCLRuntime
 import test
 import test.data.tensor
 
@@ -155,6 +156,7 @@ class TestOpenCLFromFOD(unittest.TestCase):
 
     def test_orientation_distribution_matches_sh_fod(self):
         n_seeds = 60000
+        runtime = OpenCLRuntime()
         directions = tg.core.fibonacci_sphere(1000)
 
         sh_fod, _, _ = test.data.cross()
@@ -163,7 +165,13 @@ class TestOpenCLFromFOD(unittest.TestCase):
         fod[0, 0, 0] = coefficients
         nii = nib.nifti1.Nifti1Image(fod, sh_fod.affine)
 
-        seeds = tg.seeds.from_fod(nii, n_seeds, as_array=True, use_opencl=True)
+        seeds = tg.seeds.from_fod(
+            nii,
+            n_seeds,
+            as_array=True,
+            use_opencl=True,
+            runtime=runtime,
+        )
         orientations = seeds[:, 4:7]
 
         expected = self._orientation_second_moment(
@@ -175,6 +183,7 @@ class TestOpenCLFromFOD(unittest.TestCase):
 
     def test_orientation_distribution_matches_dti_fod(self):
         n_seeds = 60000
+        runtime = OpenCLRuntime()
         directions = tg.core.fibonacci_sphere(1000)
 
         dti_fod, _, _ = test.data.tensor.cross()
@@ -183,7 +192,13 @@ class TestOpenCLFromFOD(unittest.TestCase):
         fod[0, 0, 0] = coefficients
         nii = nib.nifti1.Nifti1Image(fod, dti_fod.affine)
 
-        seeds = tg.seeds.from_fod(nii, n_seeds, as_array=True, use_opencl=True)
+        seeds = tg.seeds.from_fod(
+            nii,
+            n_seeds,
+            as_array=True,
+            use_opencl=True,
+            runtime=runtime,
+        )
         orientations = seeds[:, 4:7]
 
         expected = self._orientation_second_moment(

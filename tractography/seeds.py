@@ -10,8 +10,8 @@ import numpy as np
 import numpy.typing as npt
 
 from . import core
-from .algorithms import opencl
 from . import local as local_models
+from .opencl import BufferAccess, OpenCLRuntime
 
 
 @dataclass
@@ -109,6 +109,8 @@ def from_fod(
     n_seeds: int,
     as_array: bool = False,
     use_opencl: bool = True,
+    *,
+    runtime: OpenCLRuntime | None = None,
 ) -> list[Seed] | npt.NDArray:
     """Generate seeds from fibre orientation distributions (FOD)
 
@@ -122,6 +124,8 @@ def from_fod(
         as_array: If True, the seeds are returned as a numpy array with a shape of (n_seeds, 8).
         use_opencl: If True, the seeds will be generated using the OpenCL
             implementation which can run on GPU.
+        runtime: Runtime used for OpenCL execution. Required when
+            ``use_opencl`` is True.
 
     Return:
         A list of `n_seeds` seeds suitable for tractography
@@ -129,6 +133,8 @@ def from_fod(
     """
 
     if use_opencl:
+        if runtime is None:
+            runtime = OpenCLRuntime()
 
         # Use a sparse format for the FOD.
         mask = np.any(fod.get_fdata() != 0, axis=-1)
@@ -139,11 +145,11 @@ def from_fod(
 
         randoms = np.random.randint(4294967295, size=(n_seeds, 2)).astype(np.uint32)
 
-        fod_buffer = opencl.new_read_only_buffer(inline_fod)
-        indices_buffer = opencl.new_read_only_buffer(indices)
-        affine_buffer = opencl.new_read_only_buffer(affine)
-        randoms_buffer = opencl.new_read_only_buffer(randoms)
-        seeds_buffer = opencl.new_write_only_buffer(4 * 8 * n_seeds)
+        fod_buffer = runtime.buffer_from_array(inline_fod, BufferAccess.READ_ONLY)
+        indices_buffer = runtime.buffer_from_array(indices, BufferAccess.READ_ONLY)
+        affine_buffer = runtime.buffer_from_array(affine, BufferAccess.READ_ONLY)
+        randoms_buffer = runtime.buffer_from_array(randoms, BufferAccess.READ_ONLY)
+        seeds_buffer = runtime.allocate_buffer(4 * 8 * n_seeds)
 
         # Compile the OpenCL program that generates seeds.
         model = local_models.from_shape(fod.shape)
@@ -153,10 +159,10 @@ def from_fod(
             "n_coefficients": fod.shape[-1],
             "n_seeds": n_seeds,
         }
-        program = opencl.build_program(values, "utils/seeds.cl")
+        program = runtime.build_kernel_program("utils/seeds.cl", values)
 
         program.seeds_from_fod(
-            opencl._queue,
+            runtime.queue,
             (n_seeds,),
             None,
             fod_buffer,
@@ -166,7 +172,7 @@ def from_fod(
             seeds_buffer,
         )
         seeds = np.zeros((n_seeds, 8), np.float32)
-        opencl.copy_from_buffer(seeds_buffer, seeds)
+        runtime.copy_from_buffer(seeds_buffer, seeds, is_blocking=True)
 
         return seeds if as_array else from_array(seeds)
 

@@ -3,10 +3,11 @@ from pathlib import Path
 
 import nibabel as nib
 import numpy as np
-import pyopencl as cl
 import scipy.interpolate as si
 
 import tractography as tg
+from tractography.opencl import BufferAccess, OpenCLRuntime
+from tractography.opencl import OpenCLRuntime
 import test
 import test.data.tensor
 from test.test_algorithms import run_tractogram
@@ -154,6 +155,10 @@ class TestExactSolutions(unittest.TestCase):
 class TestTractogram(unittest.TestCase):
     """Test the OpenCL implementation of Transport tractography"""
 
+    @classmethod
+    def setUpClass(cls):
+        cls.runtime = OpenCLRuntime()
+
     def test_uniform_isotropic(self):
         """Test transport tractography on a uniform isotropic fOD field"""
 
@@ -161,7 +166,7 @@ class TestTractogram(unittest.TestCase):
         fod = test.data.uniform_isotropic()
         affine = np.eye(4)
         nii = nib.nifti1.Nifti1Image(fod, affine)
-        seeds = tg.seeds.from_fod(nii, 1000)
+        seeds = tg.seeds.from_fod(nii, 1000, runtime=OpenCLRuntime())
 
         # Generate the tractogram.
         tractogram = run_tractogram(nii, seeds, tg.algorithm.Transport)
@@ -247,24 +252,21 @@ class TestTractogram(unittest.TestCase):
         angles = np.linspace(-4 * np.pi, 4 * np.pi, 1000).astype(np.float32)
         results = np.empty(angles.shape).astype(np.float32)
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.READ_ONLY
-        angles_buffer = cl.Buffer(_context, flags, size=angles.nbytes)
-        cl.enqueue_copy(_queue, angles_buffer, np.ascontiguousarray(angles))
-
-        flags = cl.mem_flags.WRITE_ONLY
-        results_buffer = cl.Buffer(_context, flags, size=results.nbytes)
+        angles_buffer = self.runtime.buffer_from_array(angles, BufferAccess.READ_ONLY)
+        results_buffer = self.runtime.allocate_buffer(results.nbytes)
 
         # Compile the OpenCL program that implements Transport tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
+        program = self.runtime.build_kernel_program("test-boltzmann.cl")
 
         program.test_modulus(
-            _queue, (1,), None, angles_buffer, np.int32(len(angles)), results_buffer
+            self.runtime.queue,
+            (1,),
+            None,
+            angles_buffer,
+            np.int32(len(angles)),
+            results_buffer,
         )
-        cl.enqueue_copy(_queue, results, results_buffer)
+        self.runtime.copy_from_buffer(results_buffer, results, is_blocking=True)
 
         np.testing.assert_array_almost_equal(results, np.mod(angles, 2 * np.pi))
 
@@ -275,31 +277,28 @@ class TestTractogram(unittest.TestCase):
         colatitudes = np.linspace(-4 * np.pi, 4 * np.pi, 1000).astype(np.float32)
         wa, wc = zip(*[tg.utils.wrap(a, c) for a, c in zip(azimuths, colatitudes)])
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.READ_WRITE
-        azimuths_buffer = cl.Buffer(_context, flags, size=azimuths.nbytes)
-        cl.enqueue_copy(_queue, azimuths_buffer, azimuths)
-
-        flags = cl.mem_flags.READ_WRITE
-        colatitudes_buffer = cl.Buffer(_context, flags, size=colatitudes.nbytes)
-        cl.enqueue_copy(_queue, colatitudes_buffer, colatitudes)
+        azimuths_buffer = self.runtime.buffer_from_array(
+            azimuths, BufferAccess.READ_WRITE
+        )
+        colatitudes_buffer = self.runtime.buffer_from_array(
+            colatitudes, BufferAccess.READ_WRITE
+        )
 
         # Compile the OpenCL program that implements Transport tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
+        program = self.runtime.build_kernel_program("test-boltzmann.cl")
 
         program.test_wrap(
-            _queue,
+            self.runtime.queue,
             (1,),
             None,
             azimuths_buffer,
             colatitudes_buffer,
             np.int32(len(azimuths)),
         )
-        cl.enqueue_copy(_queue, azimuths, azimuths_buffer)
-        cl.enqueue_copy(_queue, colatitudes, colatitudes_buffer)
+        self.runtime.copy_from_buffer(azimuths_buffer, azimuths, is_blocking=True)
+        self.runtime.copy_from_buffer(
+            colatitudes_buffer, colatitudes, is_blocking=True
+        )
         np.testing.assert_array_almost_equal(wa, azimuths)
         np.testing.assert_array_almost_equal(wc, colatitudes)
 
@@ -312,38 +311,24 @@ class TestTractogram(unittest.TestCase):
             *[tg.core.sph2cart(a, c, 1) for a, c in zip(azimuths, colatitudes)]
         )
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.READ_ONLY
-        azimuths_buffer = cl.Buffer(_context, flags, size=azimuths.nbytes)
-        cl.enqueue_copy(_queue, azimuths_buffer, azimuths)
-
-        flags = cl.mem_flags.READ_ONLY
-        colatitudes_buffer = cl.Buffer(_context, flags, size=colatitudes.nbytes)
-        cl.enqueue_copy(_queue, colatitudes_buffer, colatitudes)
-
-        flags = cl.mem_flags.WRITE_ONLY
+        azimuths_buffer = self.runtime.buffer_from_array(
+            azimuths, BufferAccess.READ_ONLY
+        )
+        colatitudes_buffer = self.runtime.buffer_from_array(
+            colatitudes, BufferAccess.READ_ONLY
+        )
         x = np.empty(azimuths.shape, dtype=np.float32)
-        x_buffer = cl.Buffer(_context, flags, size=x.nbytes)
-        cl.enqueue_copy(_queue, x_buffer, x)
-
-        flags = cl.mem_flags.WRITE_ONLY
+        x_buffer = self.runtime.allocate_buffer(x.nbytes)
         y = np.empty(azimuths.shape, dtype=np.float32)
-        y_buffer = cl.Buffer(_context, flags, size=y.nbytes)
-        cl.enqueue_copy(_queue, y_buffer, y)
-
-        flags = cl.mem_flags.WRITE_ONLY
+        y_buffer = self.runtime.allocate_buffer(y.nbytes)
         z = np.empty(azimuths.shape, dtype=np.float32)
-        z_buffer = cl.Buffer(_context, flags, size=z.nbytes)
-        cl.enqueue_copy(_queue, z_buffer, z)
+        z_buffer = self.runtime.allocate_buffer(z.nbytes)
 
         # Compile the OpenCL program that implements Transport tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
+        program = self.runtime.build_kernel_program("test-boltzmann.cl")
 
         program.test_sph2cart(
-            _queue,
+            self.runtime.queue,
             (1,),
             None,
             azimuths_buffer,
@@ -353,9 +338,9 @@ class TestTractogram(unittest.TestCase):
             y_buffer,
             z_buffer,
         )
-        cl.enqueue_copy(_queue, x, x_buffer)
-        cl.enqueue_copy(_queue, y, y_buffer)
-        cl.enqueue_copy(_queue, z, z_buffer)
+        self.runtime.copy_from_buffer(x_buffer, x, is_blocking=True)
+        self.runtime.copy_from_buffer(y_buffer, y, is_blocking=True)
+        self.runtime.copy_from_buffer(z_buffer, z, is_blocking=True)
         np.testing.assert_array_almost_equal(x, ex)
         np.testing.assert_array_almost_equal(y, ey)
         np.testing.assert_array_almost_equal(z, ez)
@@ -363,26 +348,15 @@ class TestTractogram(unittest.TestCase):
     def test_sample_fod(self):
         """Test the sample_fod function"""
 
-        # Create the global OpenCL context.
-        _context = tg.algorithms.opencl._context
-        _queue = tg.algorithms.opencl._queue
-
-        flags = cl.mem_flags.READ_ONLY
         fod = np.random.rand(3, 4, 5, 6).astype(np.float32)
-        fod_buffer = cl.Buffer(_context, flags, size=fod.nbytes)
-        cl.enqueue_copy(_queue, fod_buffer, fod)
-
-        flags = cl.mem_flags.READ_ONLY
+        fod_buffer = self.runtime.buffer_from_array(fod, BufferAccess.READ_ONLY)
         voxel = np.zeros(3).astype(np.float32)
-        voxel_buffer = cl.Buffer(_context, flags, size=voxel.nbytes)
-        cl.enqueue_copy(_queue, voxel_buffer, voxel)
-
-        flags = cl.mem_flags.WRITE_ONLY
+        voxel_buffer = self.runtime.buffer_from_array(voxel, BufferAccess.READ_ONLY)
         coefficients = np.empty((6,), dtype=np.float32)
-        coefficients_buffer = cl.Buffer(_context, flags, size=coefficients.nbytes)
+        coefficients_buffer = self.runtime.allocate_buffer(coefficients.nbytes)
 
         # Compile the OpenCL program that implements Transport tractography.
-        program = tg.algorithms.opencl.build_program(dict(), "test-boltzmann.cl")
+        program = self.runtime.build_kernel_program("test-boltzmann.cl")
 
         x = np.arange(fod.shape[0])
         y = np.arange(fod.shape[1])
@@ -398,20 +372,34 @@ class TestTractogram(unittest.TestCase):
                 np.random.rand() * 3,
                 np.random.rand() * 4,
             ]
-            cl.enqueue_copy(_queue, voxel_buffer, voxel)
+            self.runtime.copy_to_buffer(voxel_buffer, voxel)
 
             ec = ifod(voxel)[0]
             kernel(
-                _queue, (1,), (1,), fod_buffer, voxel_buffer, coefficients_buffer
+                self.runtime.queue,
+                (1,),
+                (1,),
+                fod_buffer,
+                voxel_buffer,
+                coefficients_buffer,
             )
-            cl.enqueue_copy(_queue, coefficients, coefficients_buffer)
+            self.runtime.copy_from_buffer(
+                coefficients_buffer, coefficients, is_blocking=True
+            )
             np.testing.assert_array_almost_equal(coefficients, ec)
 
         voxel[:] = [-0.2, 0, 0]
-        cl.enqueue_copy(_queue, voxel_buffer, voxel)
+        self.runtime.copy_to_buffer(voxel_buffer, voxel)
         ec = ifod(voxel)[0]
         kernel(
-            _queue, (1,), None, fod_buffer, voxel_buffer, coefficients_buffer
+            self.runtime.queue,
+            (1,),
+            None,
+            fod_buffer,
+            voxel_buffer,
+            coefficients_buffer,
         )
-        cl.enqueue_copy(_queue, coefficients, coefficients_buffer)
+        self.runtime.copy_from_buffer(
+            coefficients_buffer, coefficients, is_blocking=True
+        )
         np.testing.assert_array_almost_equal(coefficients, ec)
