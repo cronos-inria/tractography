@@ -6,7 +6,7 @@ import numpy as np
 
 import tractography as tg
 import test.data.tensor
-from test.test_algorithms import run_configured_tractogram
+from test.test_algorithms import run_tractogram
 from test.test_algorithms.exact_solutions import (
     u0u3_coefficients,
     u0u3_reference,
@@ -83,8 +83,7 @@ class TestTractogram(unittest.TestCase):
         seeds = tg.seeds.from_fod(nii, 1000)
 
         # Generate the tractogram.
-        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        tracto = run_configured_tractogram(nii, seeds, config)
+        tracto = run_tractogram(nii, seeds, tg.algorithm.Diffusion)
         streamlines = tracto.streamlines
 
         # Verify the number of streamline produced.
@@ -99,10 +98,12 @@ class TestTractogram(unittest.TestCase):
         seeds = tg.seeds.from_mask(wm, 1000)
 
         # Generate the tractogram.
-        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        config.inverse_curvature = 5.0
-        config.noise_variance = 0.05
-        tracto = run_configured_tractogram(tensor, seeds, config)
+        tracto = run_tractogram(
+            tensor,
+            seeds,
+            tg.algorithm.Diffusion,
+            algorithm_options={"gamma": 5.0, "noise_variance": 0.05},
+        )
         streamlines = tracto.streamlines
 
         # Verify the number of streamline produced.
@@ -116,8 +117,7 @@ class TestTractogram(unittest.TestCase):
         seeds = tg.seeds.from_mask(wm, 1000)
 
         # Generate the tractogram.
-        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        tracto = run_configured_tractogram(fod, seeds, config)
+        tracto = run_tractogram(fod, seeds, tg.algorithm.Diffusion)
         streamlines = tracto.streamlines
 
         # Verify the number of streamline produced.
@@ -131,17 +131,20 @@ class TestTractogram(unittest.TestCase):
         seeds = [tg.seeds.Seed([19.0, 22.5, 0.0], [-1.0, 0.0, 0.0])] * 10
 
         # Generate the tractogram.
-        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        config.inverse_curvature = 10.0
-        config.noise_variance = 0.01
-        config.streamline.length.maximum = 40.0
-        tracto = run_configured_tractogram(tensor, seeds, config)
+        maximum_length = 40.0
+        tracto = run_tractogram(
+            tensor,
+            seeds,
+            tg.algorithm.Diffusion,
+            algorithm_options={"gamma": 10.0, "noise_variance": 0.01},
+            maximum_streamline_length=maximum_length,
+        )
         streamlines = tracto.streamlines
 
         # The streamlines should run until the maximum length is reached.
         for streamline in streamlines:
-            length = len(streamline) * config.save_at
-            self.assertAlmostEqual(length, config.streamline.length.maximum)
+            length = len(streamline) * 0.25
+            self.assertAlmostEqual(length, maximum_length)
 
     def test_circle(self):
         """Test tractography on the circle dataset"""
@@ -161,17 +164,21 @@ class TestTractogram(unittest.TestCase):
 
         # Generate the tractogram. We set a few specific parameters due to the
         # small size of the circle.
-        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        config.streamline.length.maximum = 100
-        config.step_size = 1e-3
-        config.inverse_curvature = 50.0
-        config.noise_variance = 0.1
-        tracto = run_configured_tractogram(
-            nib.Nifti1Image(fod, affine), seeds, config
+        maximum_length = 100.0
+        tracto = run_tractogram(
+            nib.Nifti1Image(fod, affine),
+            seeds,
+            tg.algorithm.Diffusion,
+            algorithm_options={
+                "step_size": 1e-3,
+                "gamma": 50.0,
+                "noise_variance": 0.1,
+            },
+            maximum_streamline_length=maximum_length,
         )
         streamlines = tracto.streamlines
 
         # The streamlines should run until the maximum lenght is reached.
         for streamline in streamlines:
-            length = len(streamline) * config.save_at
-            self.assertAlmostEqual(length, config.streamline.length.maximum)
+            length = len(streamline) * 0.25
+            self.assertAlmostEqual(length, maximum_length)

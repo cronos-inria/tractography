@@ -40,7 +40,7 @@ The CLI can write `.trx` output incrementally in configured seed batches, withou
 ## Low-level tracking function
 
 `tractography.tracking.tractogram` is a lower-level OpenCL function for combining a `BaseAlgorithm`, `BaseDomain`, `BaseField`, and seed array directly.
-Unlike `tg.tractogram`, it does not adapt image/configuration inputs or convert the public `Seed` objects.
+Unlike `tg.tractogram`, it does not adapt image inputs or convert the public `Seed` objects.
 Import it explicitly with `from tractography.tracking import tractogram`.
 
 The `seeds` argument has shape `(n_seeds, 6)`. Each row contains an initial position `(x, y, z)` followed by a direction `(dx, dy, dz)`.
