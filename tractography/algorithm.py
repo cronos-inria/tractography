@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from enum import Enum
 from string import Template
 from typing import Any
 from importlib.resources import files
@@ -14,6 +15,18 @@ from .core import cart2sph
 _OPENCL_DIR = files("tractography.resources") / "kernels"
 READ_ONLY = cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR
 WRITE_ONLY = cl.mem_flags.WRITE_ONLY
+
+
+class Algorithm(Enum):
+    """The available orientation-update algorithms."""
+
+    DETERMINISTIC = "deterministic"
+    PROBABILISTIC = "probabilistic"
+    DIFFUSION = "diffusion"
+    TRANSPORT = "transport"
+
+    def __str__(self):
+        return self.value
 
 
 class BaseAlgorithm(ABC):

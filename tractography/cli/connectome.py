@@ -12,7 +12,7 @@ import tractography as tg
 from . import utils as cli_utils
 
 
-_ALGORITHM = tg.Algorithm.TRANSPORT
+_ALGORITHM = tg.algorithm.Algorithm.TRANSPORT
 _N_SEEDS = 1_000_000
 _DISTANCE_UPPER_BOUND = 4.0
 _MAXIMUM_STREAMLINE_LENGTH = 300.0
@@ -30,7 +30,7 @@ def main(
     connectome_path: Path,
     n_seeds: int = _N_SEEDS,
     domain_path: Path | None = None,
-    algorithm: tg.Algorithm = _ALGORITHM,
+    algorithm: tg.algorithm.Algorithm = _ALGORITHM,
     segmentation_path: Path | None = None,
     distance_upper_bound: float = _DISTANCE_UPPER_BOUND,
     maximum_streamline_length: float = _MAXIMUM_STREAMLINE_LENGTH,
@@ -75,9 +75,9 @@ def add_parser(subparsers):
     cli_utils.add_domain_argument(parser)
     parser.add_argument(
         "--algorithm",
-        type=tg.Algorithm,
+        type=tg.algorithm.Algorithm,
         default=_ALGORITHM,
-        choices=list(tg.Algorithm),
+        choices=list(tg.algorithm.Algorithm),
         help=f"tracking algorithm (default: {_ALGORITHM})",
     )
     parser.add_argument(

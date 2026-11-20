@@ -3,18 +3,6 @@ from __future__ import annotations
 from enum import Enum
 
 
-class Algorithm(Enum):
-    """The available tractography algorithms."""
-
-    DETERMINISTIC = "deterministic"
-    PROBABILISTIC = "probabilistic"
-    DIFFUSION = "diffusion"
-    TRANSPORT = "transport"
-
-    def __str__(self):
-        return self.value
-
-
 class LocalModel(Enum):
     """The supported local models."""
 

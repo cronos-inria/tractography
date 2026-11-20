@@ -1,7 +1,7 @@
 # Base Algorithm
 
 `tg.algorithm.BaseAlgorithm` is the abstract interface for classes that update fiber orientations from local-model data.
-`tg.Algorithm` is the enum used by the command-line interface to select an orientation algorithm.
+`tg.algorithm.Algorithm` is the enum used by the command-line interface to select an orientation algorithm.
 For the built-in orientation updaters, see [Transport](transport-algorithm.md), [Diffusion](diffusion-algorithm.md), and [Deterministic](deterministic-algorithm.md).
 
 ## Interface

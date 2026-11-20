@@ -115,7 +115,7 @@ def test_cli_parse_dispatch_and_defaults(monkeypatch, tmp_path):
         seeds_path=seeds_path,
         tractogram_path=output_path,
         domain_path=domain_path,
-        algorithm=tg.Algorithm.TRANSPORT,
+        algorithm=tg.algorithm.Algorithm.TRANSPORT,
         save_at=0.5,
         maximum_streamline_length=25.0,
         minimum_streamline_length=1.5,

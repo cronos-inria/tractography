@@ -35,7 +35,7 @@ def add_domain_argument(parser: argparse.ArgumentParser):
 
 
 def make_tracking_algorithm(
-    field: Nifti1Image, algorithm: tg.Algorithm
+    field: Nifti1Image, algorithm: tg.algorithm.Algorithm
 ) -> tg.BaseAlgorithm:
     """Construct the selected algorithm using the public constructor defaults."""
     model_type = tg.algorithms.core.LocalModel.from_shape(field.shape)
@@ -44,13 +44,13 @@ def make_tracking_algorithm(
     else:
         local_model = tg.local.RealSymmetricSphericalHarmonics(field.shape[-1])
 
-    if algorithm == tg.Algorithm.TRANSPORT:
+    if algorithm == tg.algorithm.Algorithm.TRANSPORT:
         return tg.algorithm.Transport(local_model)
-    if algorithm == tg.Algorithm.DETERMINISTIC:
+    if algorithm == tg.algorithm.Algorithm.DETERMINISTIC:
         return tg.algorithm.Deterministic(local_model)
-    if algorithm == tg.Algorithm.DIFFUSION:
+    if algorithm == tg.algorithm.Algorithm.DIFFUSION:
         return tg.algorithm.Diffusion(local_model)
-    if algorithm == tg.Algorithm.PROBABILISTIC:
+    if algorithm == tg.algorithm.Algorithm.PROBABILISTIC:
         return tg.algorithm.Probabilistic(local_model)
     raise ValueError(f"Unsupported tracking algorithm: {algorithm}")
 
