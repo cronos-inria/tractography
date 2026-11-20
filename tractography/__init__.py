@@ -520,12 +520,14 @@ def tractogram(
             "does not provide an image-derived nonzero domain."
         )
 
-    if runtime is None:
-        runtime = OpenCLRuntime()
     if isinstance(seeds, (int, np.integer)):
+        if runtime is None:
+            runtime = OpenCLRuntime()
         seeds = domain_module.seed(tracking_domain, n_seeds, runtime=runtime)
     if not seeds:
         return Tractogram([], affine_to_rasmm=np.eye(4))
+    if runtime is None:
+        runtime = OpenCLRuntime()
 
     streamlines = []
     for start in range(0, len(seeds), batch_size):

@@ -33,4 +33,4 @@ The associated model source must provide the `ModelValue` type and `local_model_
 
 The class-level NumPy method and the module-level `tg.algorithm.update_orientation(algorithm, local_models, orientations)` function should implement equivalent updates.
 The module-level function executes the OpenCL implementation, validates the local-model array shape, and returns an empty `(0, 3)` float32 array without starting OpenCL when no orientations are supplied.
-A working OpenCL runtime is required for non-empty inputs to that function.
+The function creates an OpenCL runtime for non-empty inputs when one is not supplied. Pass `runtime=` to reuse an existing `tg.opencl.OpenCLRuntime`.

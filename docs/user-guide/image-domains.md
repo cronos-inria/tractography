@@ -48,7 +48,7 @@ print(result)  # [ True False False]
 ```
 
 `domain.contains(points)` is the NumPy reference implementation.
-`tg.domain.contains(domain, points)` evaluates the same membership test with OpenCL and requires a working OpenCL runtime.
+`tg.domain.contains(domain, points)` evaluates the same membership test with OpenCL and creates a runtime when one is not supplied. Pass `runtime=` to reuse an existing `tg.opencl.OpenCLRuntime`.
 Both methods take world-space points with shape `(n_points, 3)` and return one Boolean result per point.
 
 ## Generate seeds from the boundary
@@ -56,7 +56,7 @@ Both methods take world-space points with shape `(n_points, 3)` and return one B
 `tg.domain.Image` extracts a triangular boundary from the nonzero image voxels using marching cubes.
 `tg.domain.seed` samples this surface proportional to triangle area, returns points slightly inside the boundary, and assigns each seed an inward-pointing surface-normal orientation.
 The boundary and seed coordinates use world-space millimeters.
-Seed generation runs on OpenCL and requires a working OpenCL runtime.
+Seed generation runs on OpenCL and creates a runtime when one is not supplied. Pass `runtime=` to reuse an existing runtime.
 
 ```python
 # Generate 1,000 boundary seeds. The optional RNG seed makes the sampling
