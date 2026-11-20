@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from importlib.resources import files
 from string import Template
 from typing import Any
@@ -20,6 +21,8 @@ SOFTMAX_SCALE = 100.0
 
 class BaseLocalModel(ABC):
     """Abstract interface for a local model evaluated at orientations."""
+
+    opencl_model: str
 
     def __init__(self, n_parameters: int):
         """Initialize the model with its required coefficient count.
@@ -77,6 +80,8 @@ class RealSymmetricSphericalHarmonics(BaseLocalModel):
     distribution estimation. See https://userdocs.mrtrix.org/en/latest/concepts/spherical_harmonics.html
     
     """
+
+    opencl_model = "MODEL_SYMMETRIC_REAL_SPHERICAL_HARMONICS"
 
     def get_source(self) -> str:
         """Return OpenCL source for evaluating this spherical-harmonic model."""
@@ -194,6 +199,8 @@ class DiffusionTensorImaging(BaseLocalModel):
     by ``sin(theta)``.
     """
 
+    opencl_model = "MODEL_DTI"
+
     def __init__(self):
         super().__init__(6)
 
@@ -253,6 +260,26 @@ ModelValue local_model_evaluate(float* model, float4 orientation) {
         dtheta = 2.0 * np.einsum("ni,ni->n", tensor_dot_u, e_theta)
         dphi = 2.0 * np.einsum("ni,ni->n", tensor_dot_u, e_phi)
         return np.stack([value, dtheta, dphi], axis=-1).astype(clt.float)
+
+
+def from_shape(shape: Sequence[int]) -> BaseLocalModel:
+    """Create the built-in local model matching a field's coefficient count.
+
+    Six coefficients select diffusion tensor imaging; 45 select real
+    symmetric spherical harmonics. The returned model also provides the
+    OpenCL model identifier used by kernels that need compile-time dispatch.
+    """
+    if len(shape) == 0:
+        raise ValueError("A local-model shape must include a coefficient dimension.")
+
+    n_parameters = shape[-1]
+    if n_parameters == 6:
+        return DiffusionTensorImaging()
+    if n_parameters == 45:
+        return RealSymmetricSphericalHarmonics(n_parameters)
+    raise ValueError(
+        "For now, only DTI and fODF with 45 coefficients are supported (lmax=8)."
+    )
 
 
 def evaluate(
