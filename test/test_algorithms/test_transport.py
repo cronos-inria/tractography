@@ -11,6 +11,7 @@ from tractography.opencl import OpenCLRuntime
 import test
 import test.data.tensor
 from test.test_algorithms import run_tractogram
+from test.opencl_helpers import build_test_kernel_program
 
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
@@ -255,7 +256,7 @@ class TestTractogram(unittest.TestCase):
         results_buffer = self.runtime.allocate_buffer(results.nbytes)
 
         # Compile the OpenCL program that implements Transport tractography.
-        program = self.runtime.build_kernel_program("test-boltzmann.cl")
+        program = build_test_kernel_program(self.runtime, "test-utils.cl")
 
         program.test_modulus(
             self.runtime.queue,
@@ -284,7 +285,7 @@ class TestTractogram(unittest.TestCase):
         )
 
         # Compile the OpenCL program that implements Transport tractography.
-        program = self.runtime.build_kernel_program("test-boltzmann.cl")
+        program = build_test_kernel_program(self.runtime, "test-utils.cl")
 
         program.test_wrap(
             self.runtime.queue,
@@ -324,7 +325,7 @@ class TestTractogram(unittest.TestCase):
         z_buffer = self.runtime.allocate_buffer(z.nbytes)
 
         # Compile the OpenCL program that implements Transport tractography.
-        program = self.runtime.build_kernel_program("test-boltzmann.cl")
+        program = build_test_kernel_program(self.runtime, "test-utils.cl")
 
         program.test_sph2cart(
             self.runtime.queue,
@@ -355,7 +356,7 @@ class TestTractogram(unittest.TestCase):
         coefficients_buffer = self.runtime.allocate_buffer(coefficients.nbytes)
 
         # Compile the OpenCL program that implements Transport tractography.
-        program = self.runtime.build_kernel_program("test-boltzmann.cl")
+        program = build_test_kernel_program(self.runtime, "test-utils.cl")
 
         x = np.arange(fod.shape[0])
         y = np.arange(fod.shape[1])

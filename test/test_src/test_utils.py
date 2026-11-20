@@ -1,6 +1,7 @@
 import unittest
 
 import numpy as np
+import pyopencl as cl
 
 import tractography as tg
 from tractography.opencl import BufferAccess, OpenCLRuntime
@@ -97,8 +98,9 @@ class TestSpharm(unittest.TestCase):
 
         # Compile the OpenCL program that implements spherical harmonics.
         program = self.runtime.build_kernel_program("utils/spharm.cl")
+        ishtmtx_kernel = cl.Kernel(program, "test_ishtmtx")
 
-        program.test_ishtmtx(
+        ishtmtx_kernel(
             self.runtime.queue,
             (1,),
             None,
@@ -107,7 +109,7 @@ class TestSpharm(unittest.TestCase):
             np.uint32(len(azimuths)),
             values_buffer,
         )
-        program.test_ishtmtx(
+        ishtmtx_kernel(
             self.runtime.queue,
             (1,),
             None,

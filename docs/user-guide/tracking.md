@@ -10,12 +10,12 @@ The public function accepts a field or FOD image, an optional domain, an optiona
 If the domain is omitted, nonzero image-field voxels define it.
 If the algorithm is omitted, transport is used.
 OpenCL operations create a runtime automatically. To reuse a device context across seed generation and tracking calls, create `tg.opencl.OpenCLRuntime()` and pass it with `runtime=`.
-See [Getting Started](../getting_started.md) for a complete example that creates seeds, runs tracking, and saves the result.
+The example assumes `fod` and `white_matter` are compatible NIfTI images.
+See [Getting Started](../getting_started.md) for a complete example that loads these inputs, runs tracking, and saves the result.
 
 ```python
 import tractography as tg
 
-fod, white_matter, _ = tg.data.sh.cross()
 seeds = tg.seeds.from_mask(white_matter, 100)
 model = tg.local.RealSymmetricSphericalHarmonics(fod.shape[-1])
 algorithm = tg.algorithm.Transport(model, step_size=0.001, gamma=1.0)

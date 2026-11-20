@@ -5,6 +5,7 @@ import numpy as np
 
 import tractography as tg
 from tractography.opencl import BufferAccess, OpenCLRuntime
+from test.opencl_helpers import build_test_kernel_program
 
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
@@ -39,7 +40,7 @@ class TestCore(unittest.TestCase):
         sph_buffer = runtime.allocate_buffer(sph.nbytes)
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = runtime.build_kernel_program("test-boltzmann.cl")
+        program = build_test_kernel_program(runtime, "test-utils.cl")
 
         program.test_cart2sph(
             runtime.queue,
@@ -61,7 +62,7 @@ class TestCore(unittest.TestCase):
         values_buffer = runtime.allocate_buffer(values.nbytes)
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = runtime.build_kernel_program("test-boltzmann.cl")
+        program = build_test_kernel_program(runtime, "test-utils.cl")
 
         program.test_randu(
             runtime.queue,
@@ -80,7 +81,7 @@ class TestCore(unittest.TestCase):
         values_buffer = runtime.allocate_buffer(values.nbytes)
 
         # Compile the OpenCL program that implements Boltzmann tractography.
-        program = runtime.build_kernel_program("test-boltzmann.cl")
+        program = build_test_kernel_program(runtime, "test-utils.cl")
 
         program.test_randn(
             runtime.queue,
