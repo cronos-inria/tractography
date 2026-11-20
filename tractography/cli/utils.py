@@ -38,11 +38,7 @@ def make_tracking_algorithm(
     field: Nifti1Image, algorithm: tg.algorithm.Algorithm
 ) -> tg.BaseAlgorithm:
     """Construct the selected algorithm using the public constructor defaults."""
-    model_type = tg.algorithms.core.LocalModel.from_shape(field.shape)
-    if model_type == tg.algorithms.core.LocalModel.DTI:
-        local_model = tg.local.DiffusionTensorImaging()
-    else:
-        local_model = tg.local.RealSymmetricSphericalHarmonics(field.shape[-1])
+    local_model = tg.local.from_shape(field.shape)
 
     if algorithm == tg.algorithm.Algorithm.TRANSPORT:
         return tg.algorithm.Transport(local_model)

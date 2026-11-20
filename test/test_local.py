@@ -1,6 +1,26 @@
 import numpy as np
+import pytest
 
 import tractography as tg
+
+
+def test_from_shape_selects_supported_local_models():
+    dti = tg.local.from_shape((10, 10, 1, 6))
+    sh = tg.local.from_shape((10, 10, 1, 45))
+
+    assert isinstance(dti, tg.local.DiffusionTensorImaging)
+    assert dti.opencl_model == "MODEL_DTI"
+    assert isinstance(sh, tg.local.RealSymmetricSphericalHarmonics)
+    assert sh.n_parameters == 45
+    assert sh.opencl_model == "MODEL_SYMMETRIC_REAL_SPHERICAL_HARMONICS"
+
+
+def test_from_shape_rejects_unsupported_coefficient_counts():
+    with pytest.raises(ValueError, match="only DTI and fODF"):
+        tg.local.from_shape((10, 10, 1, 12))
+
+    with pytest.raises(ValueError, match="coefficient dimension"):
+        tg.local.from_shape(())
 
 
 def test_local_model_evaluate():

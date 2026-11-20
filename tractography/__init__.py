@@ -51,13 +51,6 @@ def _seeds_to_tracking_array(seed_list: list[seeds_module.Seed]) -> np.ndarray:
     )
 
 
-def _local_model_from_parameter_count(n_parameters: int):
-    model_type = algorithms.core.LocalModel.from_shape((n_parameters,))
-    if model_type == algorithms.core.LocalModel.DTI:
-        return local.DiffusionTensorImaging()
-    return local.RealSymmetricSphericalHarmonics(n_parameters)
-
-
 def connectome(
     field: Nifti1Image | field_module.BaseField,
     n_seeds: int = 1000000,
@@ -131,11 +124,11 @@ def connectome(
             np.any(np.asanyarray(field.dataobj) != 0, axis=-1).astype(np.uint8),
             field.affine,
         )
-        local_model = _local_model_from_parameter_count(field.shape[-1])
+        local_model = local.from_shape(field.shape)
     elif isinstance(field, field_module.BaseField):
         tracking_field = field
         local_model = (
-            _local_model_from_parameter_count(field.n_parameters)
+            local.from_shape((field.n_parameters,))
             if algorithm is None
             else None
         )
@@ -276,14 +269,14 @@ def tod(
             np.any(np.asanyarray(field.dataobj) != 0, axis=-1).astype(np.uint8),
             field.affine,
         )
-        local_model = _local_model_from_parameter_count(field.shape[-1])
+        local_model = local.from_shape(field.shape)
         grid_shape = field.shape[:3]
         grid_affine = field.affine
         grid_header = field.header.copy()
     elif isinstance(field, field_module.BaseField):
         tracking_field = field
         local_model = (
-            _local_model_from_parameter_count(field.n_parameters)
+            local.from_shape((field.n_parameters,))
             if algorithm is None
             else None
         )
@@ -456,11 +449,11 @@ def tractogram(
             np.any(np.asanyarray(field.dataobj) != 0, axis=-1).astype(np.uint8),
             field.affine,
         )
-        local_model = _local_model_from_parameter_count(field.shape[-1])
+        local_model = local.from_shape(field.shape)
     elif isinstance(field, field_module.BaseField):
         tracking_field = field
         local_model = (
-            _local_model_from_parameter_count(field.n_parameters)
+            local.from_shape((field.n_parameters,))
             if algorithm is None
             else None
         )

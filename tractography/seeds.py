@@ -11,7 +11,7 @@ import numpy.typing as npt
 
 from . import core
 from .algorithms import opencl
-from tractography.algorithms.core import LocalModel
+from . import local as local_models
 
 
 @dataclass
@@ -146,9 +146,9 @@ def from_fod(
         seeds_buffer = opencl.new_write_only_buffer(4 * 8 * n_seeds)
 
         # Compile the OpenCL program that generates seeds.
-        model = LocalModel.from_shape(fod.shape)
+        model = local_models.from_shape(fod.shape)
         values = {
-            "model": str(model),
+            "model": model.opencl_model,
             "nnz": len(indices),
             "n_coefficients": fod.shape[-1],
             "n_seeds": n_seeds,

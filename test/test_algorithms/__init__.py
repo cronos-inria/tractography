@@ -5,11 +5,7 @@ import tractography as tg
 
 def make_algorithm(field, algorithm_type, **options):
 	"""Construct an algorithm using the former test-suite defaults."""
-	model_type = tg.algorithms.core.LocalModel.from_shape(field.shape)
-	if model_type == tg.algorithms.core.LocalModel.DTI:
-		local_model = tg.local.DiffusionTensorImaging()
-	else:
-		local_model = tg.local.RealSymmetricSphericalHarmonics(field.shape[-1])
+	local_model = tg.local.from_shape(field.shape)
 
 	defaults = {
 		tg.algorithm.Transport: {"step_size": 0.001, "gamma": 0.5},
