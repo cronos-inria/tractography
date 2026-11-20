@@ -1,7 +1,7 @@
 # Probabilistic Orientation Algorithm
 
 `tg.algorithm.Probabilistic` is a `tg.algorithm.BaseAlgorithm` implementation that samples a nearby orientation according to the local-model density.
-It is an orientation-update component, not the registered `tg.Algorithm.PROBABILISTIC` tracking workflow.
+It is an orientation-update component, not the `tg.algorithm.Algorithm.PROBABILISTIC` tracking workflow selector.
 For the shared subclass interface, see [Base Algorithm](base-algorithm.md).
 
 ## Configure and update orientations

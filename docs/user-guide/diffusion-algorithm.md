@@ -1,7 +1,7 @@
 # Diffusion Orientation Algorithm
 
 `tg.algorithm.Diffusion` is a `tg.algorithm.BaseAlgorithm` implementation that updates orientations using local-model drift and Gaussian noise in the tangent plane of the unit sphere.
-It is an orientation-update component that can be used with `tg.tracking.tractogram`, not the registered `tg.Algorithm.DIFFUSION` tractography workflow.
+It is an orientation-update component that can be used with `tg.tracking.tractogram`, not the `tg.algorithm.Algorithm.DIFFUSION` tractography workflow selector.
 For the shared subclass interface, see [Base Algorithm](base-algorithm.md).
 
 ## Configure and update orientations

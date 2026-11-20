@@ -47,7 +47,7 @@ def test_main_loads_images_delegates_and_saves_labels(monkeypatch, tmp_path):
         minimum_streamline_length=2.0,
     )
 
-    make_algorithm.assert_called_once_with(field, tg.Algorithm.TRANSPORT)
+    make_algorithm.assert_called_once_with(field, tg.algorithm.Algorithm.TRANSPORT)
     run_connectome.assert_called_once_with(
         field,
         123,
@@ -114,7 +114,7 @@ def test_cli_parse_dispatch_and_defaults(monkeypatch, tmp_path):
         connectome_path=output_path,
         n_seeds=12,
         domain_path=domain_path,
-        algorithm=tg.Algorithm.TRANSPORT,
+        algorithm=tg.algorithm.Algorithm.TRANSPORT,
         segmentation_path=segmentation_path,
         distance_upper_bound=6.5,
         maximum_streamline_length=25.0,

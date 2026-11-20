@@ -36,7 +36,7 @@ def test_main_loads_files_and_delegates_to_public_tod(monkeypatch, tmp_path):
 
     assert load.call_args_list[0].args == (field_path,)
     assert load.call_args_list[1].args == (domain_path,)
-    make_algorithm.assert_called_once_with(field, tg.Algorithm.TRANSPORT)
+    make_algorithm.assert_called_once_with(field, tg.algorithm.Algorithm.TRANSPORT)
     run_tod.assert_called_once_with(
         field, 123, domain, algorithm, maximum_streamline_length=12.0
     )
@@ -62,7 +62,7 @@ def test_cli_parse_dispatch_and_defaults(tmp_path, monkeypatch):
         tod_path=output_path,
         n_seeds=12,
         domain_path=domain_path,
-        algorithm=tg.Algorithm.TRANSPORT,
+        algorithm=tg.algorithm.Algorithm.TRANSPORT,
         maximum_streamline_length=25.0,
     )
 

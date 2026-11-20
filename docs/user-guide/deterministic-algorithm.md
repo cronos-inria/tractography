@@ -1,7 +1,7 @@
 # Deterministic Orientation Algorithm
 
 `tg.algorithm.Deterministic` is a `tg.algorithm.BaseAlgorithm` implementation that iteratively seeks a nearby maximum of a local model on the unit sphere.
-It is an orientation-update component, not the registered `tg.Algorithm.DETERMINISTIC` tracking workflow.
+It is an orientation-update component, not the `tg.algorithm.Algorithm.DETERMINISTIC` tracking workflow selector.
 For the shared subclass interface, see [Base Algorithm](base-algorithm.md).
 
 ## Configure and update orientations

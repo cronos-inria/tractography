@@ -2,7 +2,6 @@ from . import algorithm as algorithm_module
 from . import algorithms, connectivity, core, data, domain as domain_module
 from . import field as field_module
 from . import local, nifti, seeds, tracking, utils
-from .algorithms.core import Algorithm
 from .algorithm import BaseAlgorithm
 
 from nibabel.affines import apply_affine

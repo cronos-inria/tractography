@@ -1,7 +1,7 @@
 # Transport Orientation Algorithm
 
 `tg.algorithm.Transport` is the built-in `tg.algorithm.BaseAlgorithm` implementation for updating orientations using the value and angular derivatives from a local model.
-It is an orientation-update component, not the `tg.Algorithm.TRANSPORT` enum value or the complete tractography workflow selected by that value.
+It is an orientation-update component, not the `tg.algorithm.Algorithm.TRANSPORT` enum value or the complete tractography workflow selected by that value.
 For the shared subclass interface, see [Base Algorithm](base-algorithm.md).
 
 ## Configure and update orientations

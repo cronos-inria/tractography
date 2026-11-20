@@ -9,10 +9,10 @@ from tractography.cli.utils import make_tracking_algorithm
 @pytest.mark.parametrize(
     ("algorithm", "algorithm_type"),
     [
-        (tg.Algorithm.TRANSPORT, tg.algorithm.Transport),
-        (tg.Algorithm.DETERMINISTIC, tg.algorithm.Deterministic),
-        (tg.Algorithm.DIFFUSION, tg.algorithm.Diffusion),
-        (tg.Algorithm.PROBABILISTIC, tg.algorithm.Probabilistic),
+        (tg.algorithm.Algorithm.TRANSPORT, tg.algorithm.Transport),
+        (tg.algorithm.Algorithm.DETERMINISTIC, tg.algorithm.Deterministic),
+        (tg.algorithm.Algorithm.DIFFUSION, tg.algorithm.Diffusion),
+        (tg.algorithm.Algorithm.PROBABILISTIC, tg.algorithm.Probabilistic),
     ],
 )
 def test_make_tracking_algorithm_infers_model_and_constructs_type(
