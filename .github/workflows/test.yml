@@ -34,7 +34,7 @@ jobs:
         with:
           name: coverage-report
           path: |
-            htmlcov/
-            .coverage
+            /tmp/tractography-coverage-html/
+            /tmp/tractography-coverage
           retention-days: 30
           if-no-files-found: warn
