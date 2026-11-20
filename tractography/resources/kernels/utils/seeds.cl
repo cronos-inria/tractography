@@ -42,15 +42,19 @@ float4 sample_fod(
 	}
 
 	// Pick a random direction according to the shape of the FOD.
-	float rand = randu(state);
+	const float threshold = randu(state) * sum;
 	float cs = 0;
+	uint selected_index = N_DIRECTIONS;
 	for (int i = 0; i < N_DIRECTIONS; i++) {
 		float4 p = fibonacci_sphere(i, N_DIRECTIONS);
 		model_value_t evaluated_fod = evaluate_interpolated_model(fod, $n_coefficients, p);
 		cs += max(evaluated_fod.value, 0.0f);;
-		if (cs > rand * sum) {
-			return p;
+		if (selected_index == N_DIRECTIONS && cs > threshold) {
+			selected_index = i;
 		}
+	}
+	if (selected_index < N_DIRECTIONS) {
+		return fibonacci_sphere(selected_index, N_DIRECTIONS);
 	}
 
 	// Should never happen.
@@ -97,7 +101,7 @@ __kernel void seeds_from_fod(
         __global const float4 voxels[$nnz],
         __global const float4 affine[4],
 		__global uint2 states[$n_seeds],
-		__global float4 seeds[$nnz][2])
+		__global float4 seeds[$n_seeds][2])
 {
 	// Copy to local memory.
     uint gid = get_global_id(0);
