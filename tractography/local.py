@@ -90,9 +90,11 @@ class RealSymmetricSphericalHarmonics(BaseLocalModel):
 
         ModelValue local_model_evaluate(float* model, float4 orientation) {
             
-            float ylm[$N_PARAMETERS];
-            float ylm_dt[$N_PARAMETERS];
-            float ylm_dp[$N_PARAMETERS]; 
+            // The helper fills all 45 supported harmonics, even when this
+            // model uses only the first 15 coefficients.
+            float ylm[45];
+            float ylm_dt[45];
+            float ylm_dp[45];
 
             // Pre-compute the spherical harmonics at the point of interest.
             float2 angles = cart2sph(orientation);
