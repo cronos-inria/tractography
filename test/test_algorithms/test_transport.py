@@ -9,7 +9,7 @@ import scipy.interpolate as si
 import tractography as tg
 import test
 import test.data.tensor
-from test.test_algorithms import run_configured_tractogram
+from test.test_algorithms import run_tractogram
 
 
 _OPENCL_DIR = Path(__file__).parents[2] / "src"
@@ -72,7 +72,7 @@ class TestExactSolutions(unittest.TestCase):
             """Integrate dU/dt = eps/F(U) * (I - U*U^T) * (U_z, 0, U_x)^T via forward Euler.
 
             Args:
-                dt: Integration step size (same units as config.save_at).
+                dt: Integration step size (same units as the tracking save interval).
                 t0: Initial colatitude theta_0 (radians).
                 p0: Initial azimuth phi_0 (radians).
                 epsilon: Anisotropy amplitude of the FOD.
@@ -111,17 +111,10 @@ class TestExactSolutions(unittest.TestCase):
         # Use step_size == save_at so every kernel step is saved, making
         # the reference integration straightforward.  inverse_curvature=1.0
         # matches the gamma=1 assumption in the analytic drift above.
-        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        config.batch_size = 1
-        config.step_size = 0.001
-        config.save_at = 0.001
-        config.inverse_curvature = 1.0
-        config.streamline.length.minimum = 0.0
-        config.streamline.length.maximum = 1.0
         tracking_algorithm = tg.algorithm.Transport(
             tg.local.RealSymmetricSphericalHarmonics(n_coefficients),
-            step_size=config.step_size,
-            gamma=config.inverse_curvature,
+            step_size=0.001,
+            gamma=1.0,
         )
         streamline = np.array(
             tg.tractogram(
@@ -129,10 +122,10 @@ class TestExactSolutions(unittest.TestCase):
                 seeds,
                 None,
                 tracking_algorithm,
-                save_at=config.save_at,
-                maximum_streamline_length=config.streamline.length.maximum,
-                minimum_streamline_length=config.streamline.length.minimum,
-                batch_size=config.batch_size,
+                save_at=0.001,
+                maximum_streamline_length=1.0,
+                minimum_streamline_length=0.0,
+                batch_size=1,
             ).streamlines[0]
         )
 
@@ -144,12 +137,13 @@ class TestExactSolutions(unittest.TestCase):
         #
         # euler_intrinsic returns [U_0, U_1, ..., U_{n_steps-1}], so index k
         # (one-based Euler step) corresponds to u_ref[k].
-        u_ref = euler_intrinsic(config.save_at, theta_0, phi_0, epsilon, config.n_steps)
+        n_steps = int(np.floor(1.0 / 0.001))
+        u_ref = euler_intrinsic(0.001, theta_0, phi_0, epsilon, n_steps)
         seed_pos = np.array([10., 10., 10.])
-        expected = np.zeros((config.n_steps, 3))
+        expected = np.zeros((n_steps, 3))
         expected[0] = seed_pos
-        for k in range(1, config.n_steps):
-            expected[k] = expected[k - 1] + config.save_at * u_ref[k]
+        for k in range(1, n_steps):
+            expected[k] = expected[k - 1] + 0.001 * u_ref[k]
 
         # decimal=3 (tolerance +-5e-4 mm) comfortably covers the ~1.2e-3 mm
         # accumulated float32 rounding error over ~1000 steps at position ~10 mm
@@ -170,8 +164,7 @@ class TestTractogram(unittest.TestCase):
         seeds = tg.seeds.from_fod(nii, 1000)
 
         # Generate the tractogram.
-        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        tractogram = run_configured_tractogram(nii, seeds, config)
+        tractogram = run_tractogram(nii, seeds, tg.algorithm.Transport)
 
         # In an isotropic field, transport tractography should produce only
         # straight lines.
@@ -187,8 +180,9 @@ class TestTractogram(unittest.TestCase):
         seeds = tg.seeds.from_mask(wm, 10000)
 
         # Generate the tractogram.
-        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        tractogram = run_configured_tractogram(tg.nifti.multiply(fod, wm), seeds, config)
+        tractogram = run_tractogram(
+            tg.nifti.multiply(fod, wm), seeds, tg.algorithm.Transport
+        )
 
         # Streamlines should cover the whole cross, but not go outside of it.
         points = np.vstack([s[:-1] for s in tractogram.streamlines])
@@ -206,9 +200,12 @@ class TestTractogram(unittest.TestCase):
         seeds = [tg.seeds.Seed([19.0, 22.5, 0.0], [-1.0, 0.0, 0.0])]
 
         # Generate the tractogram.
-        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        config.inverse_curvature = 10.0
-        tractogram = run_configured_tractogram(fod, seeds, config)
+        tractogram = run_tractogram(
+            fod,
+            seeds,
+            tg.algorithm.Transport,
+            algorithm_options={"gamma": 10.0},
+        )
         streamlines = tractogram.streamlines
 
     def test_circle(self):
@@ -230,16 +227,19 @@ class TestTractogram(unittest.TestCase):
 
         # Generate the tractogram. We set a few specific parameters due to the
         # small size of the circle.
-        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        config.streamline.length.maximum = 100
-        config.step_size = 1e-4
-        config.inverse_curvature = 50.0
-        tractogram = run_configured_tractogram(fod, seeds, config)
+        maximum_length = 100.0
+        tractogram = run_tractogram(
+            fod,
+            seeds,
+            tg.algorithm.Transport,
+            algorithm_options={"step_size": 1e-4, "gamma": 50.0},
+            maximum_streamline_length=maximum_length,
+        )
         streamlines = tractogram.streamlines
 
         # The streamlines should run until the maximum lenght is reached.
-        length = len(streamlines[0]) * config.save_at
-        self.assertAlmostEqual(length, config.streamline.length.maximum)
+        length = len(streamlines[0]) * 0.25
+        self.assertAlmostEqual(length, maximum_length)
 
     def test_mod(self):
         """Test the modulo operation"""

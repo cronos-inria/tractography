@@ -11,6 +11,7 @@ from scipy.spatial import cKDTree
 import tractography as tg
 import test
 import test.data
+from test.test_algorithms import make_algorithm
 
 _TEST_RESULTS_DIR = (
     Path(__file__).parents[1] / "test-results" / "tractography" / "connectome"
@@ -25,8 +26,7 @@ class TestTOD(unittest.TestCase):
 
         fod, seed_mask, _ = test.data.cross()
         n_seeds = 32
-        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        tracking_algorithm = tg._algorithm_from_config(fod, config)
+        tracking_algorithm = make_algorithm(fod, tg.algorithm.Diffusion)
         tod = tg.tod(
             fod,
             n_seeds,
@@ -79,17 +79,16 @@ class TestTractography(unittest.TestCase):
         fod, _, _ = test.data.cross()
         n_seeds = 100  # The number of seeds can be smaller than the batch size.
         seeds = cast(list[tg.seeds.Seed], tg.seeds.from_fod(fod, n_seeds))
-        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        tracking_algorithm = tg._algorithm_from_config(fod, config)
+        tracking_algorithm = make_algorithm(fod, tg.algorithm.Transport)
         streamlines = tg.tractogram(
             fod,
             seeds,
             None,
             tracking_algorithm,
-            save_at=config.save_at,
-            maximum_streamline_length=config.streamline.length.maximum,
-            minimum_streamline_length=config.streamline.length.minimum,
-            batch_size=config.batch_size,
+            save_at=0.25,
+            maximum_streamline_length=300.0,
+            minimum_streamline_length=10.0,
+            batch_size=50000,
         )
         self.assertLessEqual(len(streamlines), n_seeds)
 
@@ -167,15 +166,14 @@ class TestConnectome(unittest.TestCase):
         nib.save(segmentation, _TEST_RESULTS_DIR / "cross-segmentation.nii.gz")
         fod = tg.nifti.multiply(fod, wm)
         n_seeds = 10000
-        config = tg.configuration.load(tg.Algorithm.DETERMINISTIC)
-        config.streamline.length.minimum = 5
+        tracking_algorithm = make_algorithm(fod, tg.algorithm.Deterministic)
         matrix, labels = tg.connectome(
             fod,
             n_seeds=n_seeds,
-            algorithm=tg._algorithm_from_config(fod, config),
+            algorithm=tracking_algorithm,
             segmentation=segmentation,
-            maximum_streamline_length=config.streamline.length.maximum,
-            minimum_streamline_length=config.streamline.length.minimum,
+            maximum_streamline_length=300.0,
+            minimum_streamline_length=5.0,
         )
 
         # The crossing dataset has labels 1, 2, 3, 4.
@@ -205,15 +203,14 @@ class TestConnectome(unittest.TestCase):
         nib.save(segmentation, _TEST_RESULTS_DIR / "cross-segmentation.nii.gz")
         fod = tg.nifti.multiply(fod, wm)
         n_seeds = 10000
-        config = tg.configuration.load(tg.Algorithm.PROBABILISTIC)
-        config.streamline.length.minimum = 5
+        tracking_algorithm = make_algorithm(fod, tg.algorithm.Probabilistic)
         matrix, labels = tg.connectome(
             fod,
             n_seeds=n_seeds,
-            algorithm=tg._algorithm_from_config(fod, config),
+            algorithm=tracking_algorithm,
             segmentation=segmentation,
-            maximum_streamline_length=config.streamline.length.maximum,
-            minimum_streamline_length=config.streamline.length.minimum,
+            maximum_streamline_length=300.0,
+            minimum_streamline_length=5.0,
         )
 
         # The crossing dataset has labels 1, 2, 3, 4.
@@ -240,16 +237,16 @@ class TestConnectome(unittest.TestCase):
         fod, wm, segmentation = test.data.cross()
         fod = tg.nifti.multiply(fod, wm)
         n_seeds = 10000
-        config = tg.configuration.load(tg.Algorithm.DIFFUSION)
-        config.noise_variance = 0.01
-        config.streamline.length.minimum = 5
+        tracking_algorithm = make_algorithm(
+            fod, tg.algorithm.Diffusion, noise_variance=0.01
+        )
         matrix, labels = tg.connectome(
             fod,
             n_seeds=n_seeds,
-            algorithm=tg._algorithm_from_config(fod, config),
+            algorithm=tracking_algorithm,
             segmentation=segmentation,
-            maximum_streamline_length=config.streamline.length.maximum,
-            minimum_streamline_length=config.streamline.length.minimum,
+            maximum_streamline_length=300.0,
+            minimum_streamline_length=5.0,
         )
 
         np.testing.assert_array_equal(labels, [1, 2, 3, 4])
@@ -265,15 +262,14 @@ class TestConnectome(unittest.TestCase):
         fod, wm, segmentation = test.data.cross()
         fod = tg.nifti.multiply(fod, wm)
         n_seeds = 10000
-        config = tg.configuration.load(tg.Algorithm.TRANSPORT)
-        config.streamline.length.minimum = 5
+        tracking_algorithm = make_algorithm(fod, tg.algorithm.Transport)
         matrix, labels = tg.connectome(
             fod,
             n_seeds=n_seeds,
-            algorithm=tg._algorithm_from_config(fod, config),
+            algorithm=tracking_algorithm,
             segmentation=segmentation,
-            maximum_streamline_length=config.streamline.length.maximum,
-            minimum_streamline_length=config.streamline.length.minimum,
+            maximum_streamline_length=300.0,
+            minimum_streamline_length=5.0,
         )
 
         np.testing.assert_array_equal(labels, [1, 2, 3, 4])

@@ -1,8 +1,8 @@
 from . import algorithm as algorithm_module
-from . import algorithms, configuration, connectivity, core, data, domain as domain_module
+from . import algorithms, connectivity, core, data, domain as domain_module
 from . import field as field_module
 from . import local, nifti, seeds, tracking, utils
-from .algorithms.core import Algorithm, BaseConfiguration
+from .algorithms.core import Algorithm
 from .algorithm import BaseAlgorithm
 
 from nibabel.affines import apply_affine
@@ -35,48 +35,6 @@ def _tracking_components(
         domain_image = Nifti1Image(mask, fod.affine)
 
     return tracking_algorithm, domain_module.Image(domain_image), field_module.Image(fod)
-
-
-def _algorithm_from_config(
-    fod: Nifti1Image,
-    config: BaseConfiguration,
-) -> BaseAlgorithm:
-    """Create a low-level algorithm instance for CLI configuration values."""
-    model_type = algorithms.core.LocalModel.from_shape(fod.shape)
-    if model_type == algorithms.core.LocalModel.DTI:
-        local_model = local.DiffusionTensorImaging()
-    else:
-        local_model = local.RealSymmetricSphericalHarmonics(fod.shape[-1])
-
-    step_size = float(config.step_size)
-    algorithm_type = config.algorithm
-    if algorithm_type == Algorithm.TRANSPORT:
-        tracking_algorithm = algorithm_module.Transport(
-            local_model,
-            step_size=step_size,
-            gamma=float(getattr(config, "inverse_curvature", 1.0)),
-        )
-    elif algorithm_type == Algorithm.DETERMINISTIC:
-        max_angle = np.deg2rad(getattr(config, "maximum_angle", 30.0))
-        tracking_algorithm = algorithm_module.Deterministic(
-            local_model, step_size=step_size, max_step_size=max_angle
-        )
-    elif algorithm_type == Algorithm.DIFFUSION:
-        tracking_algorithm = algorithm_module.Diffusion(
-            local_model,
-            step_size=step_size,
-            gamma=float(getattr(config, "inverse_curvature", 1.0)),
-            noise_variance=float(getattr(config, "noise_variance", 0.1)),
-        )
-    elif algorithm_type == Algorithm.PROBABILISTIC:
-        max_angle = np.deg2rad(getattr(config, "maximum_angle", 20.0))
-        tracking_algorithm = algorithm_module.Probabilistic(
-            local_model, step_size=step_size, max_angle=max_angle
-        )
-    else:
-        raise ValueError(f"Unsupported tracking algorithm: {algorithm_type}")
-
-    return tracking_algorithm
 
 
 def _validate_algorithm(tracking_algorithm: BaseAlgorithm) -> None:
