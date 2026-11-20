@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from collections import namedtuple
 from pathlib import Path
+from unittest.mock import patch
 
 import nibabel as nib
 import numpy as np
@@ -86,6 +87,16 @@ class TestFromODF(unittest.TestCase):
             ValueError, lambda: tg.seeds.save(Path(d) / "oups.tyk", seeds)
         )
         self.assertRaises(ValueError, lambda: tg.seeds.load(Path(d) / "oups.tyk"))
+
+    def test_empty_opencl_request_does_not_create_runtime(self):
+        fod, _, _ = test.data.cross()
+
+        with patch("tractography.seeds.OpenCLRuntime") as runtime_factory:
+            result = tg.seeds.from_fod(fod, 0, as_array=True)
+
+        assert result.shape == (0, 8)
+        assert result.dtype == np.float32
+        runtime_factory.assert_not_called()
 
 
 class TestOpenCLFromFOD(unittest.TestCase):

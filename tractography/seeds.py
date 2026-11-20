@@ -124,13 +124,18 @@ def from_fod(
         as_array: If True, the seeds are returned as a numpy array with a shape of (n_seeds, 8).
         use_opencl: If True, the seeds will be generated using the OpenCL
             implementation which can run on GPU.
-        runtime: Runtime used for OpenCL execution. Required when
+        runtime: Optional runtime to reuse. One is created when omitted and
             ``use_opencl`` is True.
 
     Return:
         A list of `n_seeds` seeds suitable for tractography
 
     """
+
+    if n_seeds == 0:
+        if as_array:
+            return np.empty((0, 8), dtype=np.float32)
+        return []
 
     if use_opencl:
         if runtime is None:
