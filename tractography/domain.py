@@ -10,7 +10,6 @@ import trimesh
 from trimesh import Trimesh
 
 from .opencl import BufferAccess, OpenCLRuntime
-from .seeds import Seed
 
 type Points = np.ndarray[tuple[int, int], Any]
 type ContainsResult = np.ndarray[tuple[int], np.dtype[np.bool_]]
@@ -497,7 +496,7 @@ def seed(
     n_seeds: int,
     rng_seed: int | None = None,
     runtime: OpenCLRuntime | None = None,
-) -> list[Seed]:
+) -> np.ndarray:
     """Generate seeds by sampling the domain boundary with OpenCL.
 
     Each seed is sampled uniformly over the boundary surface area. Its
@@ -510,7 +509,8 @@ def seed(
         rng_seed: Optional seed for reproducible sampling.
 
     Returns:
-        A list of seeds with world-space locations and inward orientations.
+        An ``(n_seeds, 8)`` float32 array of homogeneous world-space
+        locations and inward orientations.
 
     Raises:
         ValueError: If ``n_seeds`` is not a non-negative integer.
@@ -518,7 +518,7 @@ def seed(
     if not isinstance(n_seeds, (int, np.integer)) or n_seeds < 0:
         raise ValueError("n_seeds must be a non-negative integer.")
     if n_seeds == 0:
-        return []
+        return np.empty((0, 8), dtype=clt.float)
     if runtime is None:
         runtime = OpenCLRuntime()
 
@@ -572,7 +572,4 @@ def seed(
     runtime.copy_from_buffer(locations_buffer, locations, is_blocking=True)
     runtime.copy_from_buffer(orientations_buffer, orientations, is_blocking=True)
 
-    return [
-        Seed(location[:3], orientation[:3])
-        for location, orientation in zip(locations, orientations)
-    ]
+    return np.hstack((locations, orientations))

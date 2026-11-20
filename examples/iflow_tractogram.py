@@ -37,12 +37,8 @@ def main(output_path: Path = Path("iflow-tractogram.tck")) -> Path:
     # pointing orientation. A fixed random seed makes this example repeatable.
     seeds = tg.domain.seed(domain, n_seeds=100000, rng_seed=42)
 
-    # The low-level tracking function accepts an (n_seeds, 6) NumPy array:
-    # each row is the seed's x, y, z location followed by dx, dy, dz direction.
-    seed_array = np.asarray(
-        [np.concatenate((seed.location, seed.orientation), axis=0) for seed in seeds],
-        dtype=np.float32,
-    ).reshape((-1, 6))
+    # Each row stores a homogeneous position (x, y, z, 1) and direction
+    # (dx, dy, dz, 0), matching the OpenCL float4 representation.
 
     # The SH local model interprets the FOD coefficients and supplies the
     # orientation values and derivatives used by transport tracking.
@@ -60,7 +56,7 @@ def main(output_path: Path = Path("iflow-tractogram.tck")) -> Path:
         algorithm,
         domain,
         field,
-        seed_array,
+        seeds,
         save_at=1.0,
         maximum_streamline_length=300.0,
     )

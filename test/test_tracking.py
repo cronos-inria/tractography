@@ -19,7 +19,7 @@ def test_tractogram_empty_seeds_returns_empty_tractogram():
 		algorithm,
 		domain,
 		field,
-		np.empty((0, 6), dtype=np.float32),
+		np.empty((0, 8), dtype=np.float32),
 	)
 
 	assert len(result.streamlines) == 0
@@ -41,7 +41,7 @@ def test_tractogram_tracks_seed_until_leaving_domain():
 	algorithm = tg.algorithm.Transport(
 		local_model, step_size=1.0, gamma=0.0
 	)
-	seeds = np.array([[0.0, 0.0, 0.0, 1.0, 0.0, 0.0]], dtype=np.float32)
+	seeds = np.array([[0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0]], dtype=np.float32)
 
 	result = tractogram(algorithm, domain, field, seeds)
 
@@ -65,7 +65,7 @@ def test_tractogram_rejects_incompatible_local_model_and_field():
 			algorithm,
 			domain,
 			field,
-			np.empty((0, 6), dtype=np.float32),
+			np.empty((0, 8), dtype=np.float32),
 		)
 
 
@@ -82,7 +82,7 @@ def test_tractogram_respects_save_interval_and_maximum_length():
 		step_size=0.25,
 		gamma=0.0,
 	)
-	seeds = np.array([[0.0, 0.0, 0.0, 1.0, 0.0, 0.0]], dtype=np.float32)
+	seeds = np.array([[0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0]], dtype=np.float32)
 
 	result = tractogram(
 		algorithm,
@@ -116,7 +116,7 @@ def test_tractogram_accepts_diffusion_algorithm():
 		noise_variance=0.0,
 		seed=1234,
 	)
-	seeds = np.array([[0.0, 0.0, 0.0, 1.0, 0.0, 0.0]], dtype=np.float32)
+	seeds = np.array([[0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0]], dtype=np.float32)
 
 	result = tractogram(algorithm, domain, field, seeds)
 

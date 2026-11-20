@@ -31,7 +31,9 @@ class TestExactSolutions(unittest.TestCase):
         phi_0 = 0.5
         seed_position = np.asarray([10.0, 10.0, 10.0])
         orientation = np.asarray(tg.core.sph2cart(phi_0, theta_0, 1.0))
-        seeds = [tg.seeds.Seed(seed_position, orientation)]
+        seeds = np.array(
+            [[*seed_position, 1.0, *orientation, 0.0]], dtype=np.float32
+        )
 
         step_size = 0.001
         maximum_length = 1.0
@@ -129,7 +131,10 @@ class TestTractogram(unittest.TestCase):
 
         # Prepare the data.
         tensor, wm, _ = test.data.tensor.circle((20, 20, 1), radius=5, width=2)
-        seeds = [tg.seeds.Seed([19.0, 22.5, 0.0], [-1.0, 0.0, 0.0])] * 10
+        seeds = np.tile(
+            np.array([[19.0, 22.5, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0]]),
+            (10, 1),
+        )
 
         # Generate the tractogram.
         maximum_length = 40.0
@@ -156,12 +161,13 @@ class TestTractogram(unittest.TestCase):
         fod = test.data.circle(shape=shape, radius=radius)
         affine = np.eye(4)
         wm = fod[..., 0] > 0
-        seeds = [
-            tg.seeds.Seed(
-                [(shape[0] - 1) / 2, (shape[1] - 1) / 2 + radius, 0.0], [1.0, 0.0, 0.0]
-            )
-            for _ in range(100)
-        ]
+        seeds = np.tile(
+            np.array(
+                [[(shape[0] - 1) / 2, (shape[1] - 1) / 2 + radius, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0]],
+                dtype=np.float32,
+            ),
+            (100, 1),
+        )
 
         # Generate the tractogram. We set a few specific parameters due to the
         # small size of the circle.

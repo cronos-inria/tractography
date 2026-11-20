@@ -158,9 +158,12 @@ def test_domain_seed_samples_interior_points_with_inward_orientations():
 
     seeds = tg.domain.seed(domain, 64, rng_seed=123)
 
-    assert len(seeds) == 64
-    locations = np.asarray([sample.location for sample in seeds])
-    orientations = np.asarray([sample.orientation for sample in seeds])
+    assert seeds.shape == (64, 8)
+    assert seeds.dtype == np.float32
+    np.testing.assert_array_equal(seeds[:, 3], 1.0)
+    np.testing.assert_array_equal(seeds[:, 7], 0.0)
+    locations = seeds[:, :3]
+    orientations = seeds[:, 4:7]
     assert np.all(domain.contains(locations))
     np.testing.assert_allclose(np.linalg.norm(orientations, axis=1), 1.0, atol=1e-6)
     inward = np.array([2.0, 2.0, 2.0]) - locations
@@ -170,7 +173,9 @@ def test_domain_seed_samples_interior_points_with_inward_orientations():
 def test_domain_seed_validates_count_and_handles_zero():
     """Zero seeds return immediately and negative counts are rejected."""
     domain = tg.domain.Image(Nifti1Image(np.ones((1, 1, 1)), np.eye(4)))
-    assert tg.domain.seed(domain, 0) == []
+    empty_seeds = tg.domain.seed(domain, 0)
+    assert empty_seeds.shape == (0, 8)
+    assert empty_seeds.dtype == np.float32
     with pytest.raises(ValueError, match="non-negative integer"):
         tg.domain.seed(domain, -1)
 
