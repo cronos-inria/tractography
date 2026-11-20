@@ -107,7 +107,7 @@ class TestExactSolutions(unittest.TestCase):
         theta_0 = 0.12
         phi_0 = 0.5
         orientation = np.array(tg.core.sph2cart(phi_0, theta_0, 1.0))
-        seeds = [tg.seeds.Seed(np.array([10., 10, 10]), orientation)]
+        seeds = np.array([[10.0, 10.0, 10.0, 1.0, *orientation, 0.0]], dtype=np.float32)
 
         # Use step_size == save_at so every kernel step is saved, making
         # the reference integration straightforward.  inverse_curvature=1.0
@@ -202,7 +202,7 @@ class TestTractogram(unittest.TestCase):
 
         # Prepare the data.
         fod, wm, _ = test.data.tensor.circle((20, 20, 1), radius=5, width=2)
-        seeds = [tg.seeds.Seed([19.0, 22.5, 0.0], [-1.0, 0.0, 0.0])]
+        seeds = np.array([[19.0, 22.5, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0]])
 
         # Generate the tractogram.
         tractogram = run_tractogram(
@@ -224,11 +224,10 @@ class TestTractogram(unittest.TestCase):
         fod = nib.nifti1.Nifti1Image(fod, affine)
         wm = fod.get_fdata()[..., 0] > 0
         wm = nib.nifti1.Nifti1Image(wm.astype(np.uint8), affine)
-        seeds = [
-            tg.seeds.Seed(
-                [(shape[0] - 1) / 2, (shape[1] - 1) / 2 + radius, 0.0], [1.0, 0.0, 0.0]
-            )
-        ]
+        seeds = np.array(
+            [[(shape[0] - 1) / 2, (shape[1] - 1) / 2 + radius, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0]],
+            dtype=np.float32,
+        )
 
         # Generate the tractogram. We set a few specific parameters due to the
         # small size of the circle.

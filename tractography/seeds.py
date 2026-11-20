@@ -1,6 +1,5 @@
 """Generate seeds for tractography"""
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import nibabel as nib
@@ -14,17 +13,50 @@ from . import local as local_models
 from .opencl import BufferAccess, OpenCLRuntime
 
 
-@dataclass
-class Seed:
-    """A single streamline seed"""
+def _from_components(
+    locations: npt.ArrayLike, orientations: npt.ArrayLike
+) -> npt.NDArray[np.float32]:
+    """Build the canonical ``(n_seeds, 8)`` homogeneous seed array."""
+    locations = np.asarray(locations, dtype=np.float32)
+    orientations = np.asarray(orientations, dtype=np.float32)
+    if locations.ndim != 2 or locations.shape[1] != 3:
+        raise ValueError("locations must have shape (n_seeds, 3).")
+    if orientations.shape != locations.shape:
+        raise ValueError("orientations must have the same shape as locations.")
 
-    location: npt.ArrayLike
-    orientation: npt.ArrayLike
+    result = np.empty((len(locations), 8), dtype=np.float32)
+    result[:, :3] = locations
+    result[:, 3] = 1.0
+    result[:, 4:7] = orientations
+    result[:, 7] = 0.0
+    return result
+
+
+def validate_seed_array(seeds: npt.ArrayLike) -> npt.NDArray[np.float32]:
+    """Validate and normalize a canonical seed array.
+
+    Args:
+        seeds: Array with shape ``(n_seeds, 8)``. Each row contains a
+            homogeneous position ``(x, y, z, 1)`` and direction
+            ``(dx, dy, dz, 0)``.
+
+    Returns:
+        A C-contiguous ``float32`` array with the same seed values.
+
+    Raises:
+        ValueError: If the shape or homogeneous-coordinate columns are invalid.
+    """
+    result = np.ascontiguousarray(seeds, dtype=np.float32)
+    if result.ndim != 2 or result.shape[1] != 8:
+        raise ValueError("seeds must have shape (n_seeds, 8).")
+    if not np.all(result[:, 3] == 1) or not np.all(result[:, 7] == 0):
+        raise ValueError("seed position and orientation homogeneous values must be 1 and 0.")
+    return result
 
 
 def from_surface(
     surface: nimesh.Mesh, n_seeds: int, cone_angle: float = 0
-) -> list[Seed]:
+) -> npt.NDArray[np.float32]:
     """Generate seeds from a surface
 
     The seeds are generated uniformly over the triangles of the
@@ -41,9 +73,12 @@ def from_surface(
         cone_angle: The opening angle of the cone in degrees.
 
     Return:
-        A list of `n_seeds` seeds suitable for tractography.
+        An array of shape ``(n_seeds, 8)`` suitable for tractography.
 
     """
+
+    if n_seeds == 0:
+        return np.empty((0, 8), dtype=np.float32)
 
     # First choose a triangle for every seed and generate a random point
     # inside that triangle.
@@ -73,10 +108,10 @@ def from_surface(
     else:
         orientations = _sample_cone(rng, -normals[indices], cone_angle)
 
-    return [Seed(el, n) for el, n in zip(locations, orientations)]
+    return _from_components(locations, orientations)
 
 
-def from_mask(mask: Nifti1Image, n_seeds: int) -> list[Seed]:
+def from_mask(mask: Nifti1Image, n_seeds: int) -> npt.NDArray[np.float32]:
     """Generate seeds from a 3D mask
 
     The seeds are generated uniformly inside voxels with non-zero
@@ -87,9 +122,12 @@ def from_mask(mask: Nifti1Image, n_seeds: int) -> list[Seed]:
         n_seeds: The number of seeds to generate.
 
     Return:
-        A list of `n_seeds` seeds suitable for tractography
+        An array of shape ``(n_seeds, 8)`` suitable for tractography.
 
     """
+
+    if n_seeds == 0:
+        return np.empty((0, 8), dtype=np.float32)
 
     # Get the non-zero voxels and generate random points inside them.
     voxels = np.array(list(zip(*np.nonzero(mask.get_fdata()))))
@@ -101,17 +139,16 @@ def from_mask(mask: Nifti1Image, n_seeds: int) -> list[Seed]:
     orientations = np.random.randn(n_seeds, 3)
     orientations /= np.linalg.norm(orientations, axis=1, keepdims=True)
 
-    return [Seed(el, n) for el, n in zip(locations, orientations)]
+    return _from_components(locations, orientations)
 
 
 def from_fod(
     fod: Nifti1Image,
     n_seeds: int,
-    as_array: bool = False,
     use_opencl: bool = True,
     *,
     runtime: OpenCLRuntime | None = None,
-) -> list[Seed] | npt.NDArray:
+) -> npt.NDArray[np.float32]:
     """Generate seeds from fibre orientation distributions (FOD)
 
     The seeds are generated uniformly in voxels with non-zero average
@@ -121,21 +158,18 @@ def from_fod(
     Args:
         fod: The Nifti1Image containing the FOD.
         n_seeds: The number of seeds to generate.
-        as_array: If True, the seeds are returned as a numpy array with a shape of (n_seeds, 8).
         use_opencl: If True, the seeds will be generated using the OpenCL
             implementation which can run on GPU.
         runtime: Optional runtime to reuse. One is created when omitted and
             ``use_opencl`` is True.
 
     Return:
-        A list of `n_seeds` seeds suitable for tractography
+        An array of shape ``(n_seeds, 8)`` suitable for tractography.
 
     """
 
     if n_seeds == 0:
-        if as_array:
-            return np.empty((0, 8), dtype=np.float32)
-        return []
+        return np.empty((0, 8), dtype=np.float32)
 
     if use_opencl:
         if runtime is None:
@@ -179,7 +213,7 @@ def from_fod(
         seeds = np.zeros((n_seeds, 8), np.float32)
         runtime.copy_from_buffer(seeds_buffer, seeds, is_blocking=True)
 
-        return seeds if as_array else from_array(seeds)
+        return seeds
 
     else:
         # Get the non-zero voxels.
@@ -203,28 +237,11 @@ def from_fod(
             i = np.searchsorted(cumsum, np.random.rand() * cumsum[-1])
             orientations.append(vertices[i])
 
-        if as_array:
-            return np.hstack(
-                (locations, np.ones((n_seeds, 1)), orientations, np.zeros((n_seeds, 1)))
-            )
-        else:
-            return [Seed(el, n) for el, n in zip(locations, orientations)]
+        return _from_components(locations, orientations)
 
 
-def to_array(seeds: list[Seed]) -> npt.NDArray:
-    """Split seeds into location and orientation"""
-    return np.array(
-        [np.hstack((np.r_[s.location, 1.0], np.r_[s.orientation, 0.0])) for s in seeds]
-    )
-
-
-def from_array(array: npt.NDArray) -> list[Seed]:
-    """Create seeds from a numpy array"""
-    return [Seed(a[:3], a[4:7]) for a in array]
-
-
-def save(filename: Path, seeds: list[Seed]):
-    """Save a list of seeds to file
+def save(filename: Path, seeds: npt.ArrayLike):
+    """Save an ``(n_seeds, 8)`` seed array to file.
 
     Saves the seeds to a file which can either be a text file
     or a tractogram .tck.
@@ -232,24 +249,29 @@ def save(filename: Path, seeds: list[Seed]):
     Args:
         filename: The name of the file to save. The extension
             decides the file type.
-        seeds: The seeds to save.
+        seeds: Seed array with homogeneous positions and directions.
 
     """
 
+    seeds = validate_seed_array(seeds)
+
     match filename.suffix:
         case ".txt":
-            data = [np.hstack((s.location, s.orientation)) for s in seeds]
+            data = np.hstack((seeds[:, :3], seeds[:, 4:7]))
             np.savetxt(filename, data)
         case ".tck":
-            data = [np.vstack((s.location, s.location + s.orientation)) for s in seeds]
+            data = [
+                np.vstack((seed[:3], seed[:3] + seed[4:7]))
+                for seed in seeds
+            ]
             tractogram = nib.streamlines.Tractogram(data, affine_to_rasmm=np.eye(4))
             nib.streamlines.TckFile(tractogram).save(filename)
         case _:
             raise ValueError(f"Unknown file type {filename.suffix}")
 
 
-def load(filename: Path) -> list[Seed]:
-    """Load a list of seed from a file
+def load(filename: Path) -> npt.NDArray[np.float32]:
+    """Load seeds from a file into the canonical ``(n_seeds, 8)`` array.
 
     Loads the seeds from a file which can either be a text file
     or a tractogram .tck.
@@ -258,17 +280,25 @@ def load(filename: Path) -> list[Seed]:
         filename: The name of the file to load.
 
     Return
-        seeds: The loaded seeds.
+        seeds: Loaded seed array.
 
     """
 
     match filename.suffix:
         case ".txt":
-            data = np.loadtxt(filename)
-            return [Seed(d[:3], d[3:]) for d in data]
+            data = np.loadtxt(filename, dtype=np.float32, ndmin=2)
+            if data.size == 0:
+                return np.empty((0, 8), dtype=np.float32)
+            if data.shape[1] != 6:
+                raise ValueError("Text seed files must contain six columns.")
+            return _from_components(data[:, :3], data[:, 3:6])
         case ".tck":
             streamlines = nib.streamlines.load(filename).streamlines
-            return [Seed(s[0], s[1] - s[0]) for s in streamlines]
+            locations = np.asarray([s[0] for s in streamlines], dtype=np.float32).reshape(-1, 3)
+            orientations = np.asarray(
+                [s[1] - s[0] for s in streamlines], dtype=np.float32
+            ).reshape(-1, 3)
+            return _from_components(locations, orientations)
         case _:
             raise ValueError(f"Unknown file type {filename.suffix}")
 

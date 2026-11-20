@@ -1,5 +1,5 @@
 from . import algorithm as algorithm_module
-from . import algorithms, connectivity, core, data, domain as domain_module
+from . import connectivity, core, data, domain as domain_module
 from . import field as field_module
 from .opencl import OpenCLRuntime
 from . import local, nifti, seeds, tracking, utils
@@ -40,16 +40,6 @@ def _tracking_components(
 def _validate_algorithm(tracking_algorithm: BaseAlgorithm) -> None:
     if not isinstance(tracking_algorithm, BaseAlgorithm):
         raise TypeError("algorithm must be a BaseAlgorithm instance.")
-
-
-def _seeds_to_tracking_array(seed_list: list[seeds_module.Seed]) -> np.ndarray:
-    """Convert public Seed objects to the low-level ``(n, 6)`` layout."""
-    if not seed_list:
-        return np.empty((0, 6), dtype=np.float32)
-    return np.asarray(
-        [np.concatenate((seed.location, seed.orientation)) for seed in seed_list],
-        dtype=np.float32,
-    )
 
 
 def connectome(
@@ -378,7 +368,7 @@ def tod(
 
 def tractogram(
     field: Nifti1Image | field_module.BaseField,
-    seeds: list[seeds_module.Seed] | int,
+    seeds: npt.NDArray[np.float32] | int,
     domain: domain_module.BaseDomain | Nifti1Image | None = None,
     algorithm: BaseAlgorithm | None = None,
     *,
@@ -401,10 +391,11 @@ def tractogram(
     For a custom field, provide a domain unless the field is an image field
     created by this package.
 
-    ``seeds`` may be a list of :class:`tractography.seeds.Seed` objects or an
-    integer count. An integer samples seed locations uniformly on the domain
-    boundary, nudges them slightly inside the domain, and points each seed
-    inward. A seed list gives explicit starting positions and orientations.
+    ``seeds`` may be an array with shape ``(n_seeds, 8)`` or an integer count.
+    Each array row contains a homogeneous position ``(x, y, z, 1)`` and
+    direction ``(dx, dy, dz, 0)``. An integer samples seed locations uniformly
+    on the domain boundary, nudges them slightly inside the domain, and points
+    each seed inward.
 
     Example:
         ``tractogram(fod_image, seeds=10000)``
@@ -414,8 +405,8 @@ def tractogram(
 
     Args:
         field: A supported 4D NIfTI image or a prepared spatial field.
-        seeds: Explicit seed objects, or a non-negative number of boundary
-            seeds to generate.
+        seeds: An ``(n_seeds, 8)`` array of homogeneous seed positions and
+            directions, or a non-negative number of boundary seeds to generate.
         domain: Optional tracking domain, either a domain object or a 3D
             NIfTI image. If omitted, nonzero image-field voxels are used.
         algorithm: Orientation-update algorithm. Defaults to transport using
@@ -492,14 +483,15 @@ def tractogram(
 
     if isinstance(seeds, (int, np.integer)):
         if seeds < 0:
-            raise ValueError("seeds must be a non-negative integer or a list of Seed objects.")
+            raise ValueError(
+                "seeds must be a non-negative integer or an (n_seeds, 8) array."
+            )
         n_seeds = int(seeds)
-    elif isinstance(seeds, list) and all(
-        isinstance(seed, seeds_module.Seed) for seed in seeds
-    ):
+    elif isinstance(seeds, np.ndarray):
+        seeds = seeds_module.validate_seed_array(seeds)
         n_seeds = len(seeds)
     else:
-        raise TypeError("seeds must be a non-negative integer or a list of Seed objects.")
+        raise TypeError("seeds must be a non-negative integer or an (n_seeds, 8) array.")
 
     if domain is not None and not isinstance(
         domain, (Nifti1Image, domain_module.BaseDomain)
@@ -524,7 +516,7 @@ def tractogram(
         if runtime is None:
             runtime = OpenCLRuntime()
         seeds = domain_module.seed(tracking_domain, n_seeds, runtime=runtime)
-    if not seeds:
+    if len(seeds) == 0:
         return Tractogram([], affine_to_rasmm=np.eye(4))
     if runtime is None:
         runtime = OpenCLRuntime()
@@ -535,7 +527,7 @@ def tractogram(
             tracking_algorithm,
             tracking_domain,
             tracking_field,
-            _seeds_to_tracking_array(seeds[start : start + batch_size]),
+            seeds[start : start + batch_size],
             save_at=save_at,
             maximum_streamline_length=maximum_streamline_length,
             runtime=runtime,

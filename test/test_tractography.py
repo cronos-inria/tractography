@@ -1,6 +1,5 @@
 import unittest
 from pathlib import Path
-from typing import cast
 from unittest.mock import patch
 
 import nibabel as nib
@@ -55,6 +54,21 @@ class TestTOD(unittest.TestCase):
 class TestTractography(unittest.TestCase):
     """Test the tg.tractogram function"""
 
+    def test_low_level_tracker_rejects_noncanonical_seed_arrays(self):
+        """Seed arrays must use eight columns and homogeneous coordinates."""
+        domain = tg.domain.Image(nib.Nifti1Image(np.ones((1, 1, 1)), np.eye(4)))
+        field = tg.field.Image(nib.Nifti1Image(np.ones((1, 1, 1, 1)), np.eye(4)))
+        algorithm = tg.algorithm.Transport(tg.local.RealSymmetricSphericalHarmonics(1))
+
+        with self.assertRaisesRegex(ValueError, r"shape \(n_seeds, 8\)"):
+            tg.tracking.tractogram(
+                algorithm, domain, field, np.empty((1, 6), dtype=np.float32)
+            )
+
+        bad_homogeneous = np.zeros((1, 8), dtype=np.float32)
+        with self.assertRaisesRegex(ValueError, "homogeneous values"):
+            tg.tracking.tractogram(algorithm, domain, field, bad_homogeneous)
+
     def test_image_default_algorithm_and_boundary_seeds(self):
         fod, _, _ = test.data.cross()
         result = tg.tractogram(
@@ -79,10 +93,7 @@ class TestTractography(unittest.TestCase):
 
         fod, _, _ = test.data.cross()
         n_seeds = 100  # The number of seeds can be smaller than the batch size.
-        seeds = cast(
-            list[tg.seeds.Seed],
-            tg.seeds.from_fod(fod, n_seeds, runtime=OpenCLRuntime()),
-        )
+        seeds = tg.seeds.from_fod(fod, n_seeds, runtime=OpenCLRuntime())
         tracking_algorithm = make_algorithm(fod, tg.algorithm.Transport)
         streamlines = tg.tractogram(
             fod,

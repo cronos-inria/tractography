@@ -51,7 +51,7 @@ def test_main_delegates_to_public_tractogram(monkeypatch, tmp_path):
     output_path = tmp_path / "tracks.tck"
     field = nib.Nifti1Image(np.ones((2, 2, 2, 45), dtype=np.float32), np.eye(4))
     domain = nib.Nifti1Image(np.ones((2, 2, 2), dtype=np.uint8), np.eye(4))
-    seeds = [tg.seeds.Seed(np.zeros(3), np.ones(3))]
+    seeds = np.array([[0, 0, 0, 1, 1, 1, 1, 0]], dtype=np.float32)
     algorithm = object()
     result = Tractogram([], affine_to_rasmm=np.eye(4))
     monkeypatch.setattr(
@@ -133,10 +133,9 @@ def test_cli_parse_dispatch_and_defaults(monkeypatch, tmp_path):
 def test_trx_output_is_written_incrementally(monkeypatch, tmp_path):
     fod = nib.Nifti1Image(np.zeros((2, 2, 2, 1), dtype=np.float32), np.eye(4))
     mask = nib.Nifti1Image(np.ones((2, 2, 2), dtype=np.uint8), np.eye(4))
-    seeds = [
-        tg.seeds.Seed(np.array([i, 0, 0]), np.array([1, 0, 0]))
-        for i in range(3)
-    ]
+    seeds = np.array(
+        [[i, 0, 0, 1, 1, 0, 0, 0] for i in range(3)], dtype=np.float32
+    )
     monkeypatch.setattr(
         tg, "_tracking_components", lambda *args, **kwargs: (object(), object(), object())
     )

@@ -63,9 +63,9 @@ Seed generation runs on OpenCL and creates a runtime when one is not supplied. P
 # reproducible on the same OpenCL implementation.
 seeds = tg.domain.seed(domain, n_seeds=1000, rng_seed=42)
 
-print(seeds[0].location)
-print(seeds[0].orientation)
+print(seeds[0, :3])
+print(seeds[0, 4:7])
 ```
 
-Pass the returned seeds to `tg.tractogram` or another tracking function that accepts `Seed` objects.
+Pass the returned array directly to `tg.tractogram` or `tg.tracking.tractogram`.
 An empty image mask is rejected because it has no boundary to sample.

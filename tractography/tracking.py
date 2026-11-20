@@ -12,6 +12,7 @@ from .algorithm import BaseAlgorithm
 from .domain import BaseDomain
 from .field import BaseField
 from .opencl import BufferAccess, OpenCLRuntime
+from .seeds import validate_seed_array
 from .utils import normalize_odf
 
 
@@ -41,10 +42,10 @@ def tractogram(
         domain: Region in which tracking is allowed to continue.
         field: Spatial field of local-model parameters. Its parameter count
             must match ``algorithm.local_model.n_parameters``.
-        seeds: Array with shape ``(n_seeds, 6)``. Each row contains the seed
-            position ``(x, y, z)`` followed by its initial direction
-            ``(dx, dy, dz)``. Positions are interpreted in the coordinate
-            system used by the domain and field.
+        seeds: Array with shape ``(n_seeds, 8)``. Each row contains the
+            homogeneous position ``(x, y, z, 1)`` followed by the homogeneous
+            direction ``(dx, dy, dz, 0)``. Positions are interpreted in the
+            coordinate system used by the domain and field.
         save_at: Distance interval between saved streamline points, in the
             coordinate units used by the inputs. Defaults to ``1.0``.
         maximum_streamline_length: Maximum length reserved for each
@@ -65,6 +66,8 @@ def tractogram(
         runtime. An empty seed array returns an empty tractogram without
         creating an OpenCL context.
     """
+
+    seeds = validate_seed_array(seeds)
 
     # Verify the local model and the field are compatible.
     if algorithm.local_model.n_parameters != field.n_parameters:
@@ -146,12 +149,9 @@ def tractogram(
     }
     """).safe_substitute({"N_STEPS": n_steps, "N_PARAMETERS": field.n_parameters})
 
-    # Orientations are stored in a (n_points, 4) array with the last component set
-    # to 0 to match the OpenCL float4 format.
-    seeds_data = np.zeros((n_seeds, 8), dtype=clt.float)
-    seeds_data[:, :3] = seeds[:, :3]
-    seeds_data[:, 4:7] = seeds[:, 3:]
-    seeds_buffer = runtime.buffer_from_array(seeds_data, BufferAccess.READ_ONLY)
+    seeds_buffer = runtime.buffer_from_array(
+        np.ascontiguousarray(seeds, dtype=clt.float), BufferAccess.READ_ONLY
+    )
 
     # Prepare the streamlines buffer.
     streamlines = np.zeros((n_seeds, n_steps, 4), dtype=clt.float)

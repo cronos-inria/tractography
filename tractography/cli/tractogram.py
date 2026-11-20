@@ -81,7 +81,7 @@ def main(
 def _write_trx_batches(
     field: Nifti1Image,
     domain_image: Nifti1Image | None,
-    seeds: list[tg.seeds.Seed],
+    seeds: np.ndarray,
     tracking_algorithm: tg.BaseAlgorithm,
     output_path: Path,
     *,
@@ -118,7 +118,7 @@ def _write_trx_batches(
     minimum_points = int(np.ceil(minimum_streamline_length / save_at))
     try:
         for start in range(0, len(seeds), batch_size):
-            batch = tg._seeds_to_tracking_array(seeds[start : start + batch_size])
+            batch = seeds[start : start + batch_size]
             result = tg.tracking.tractogram(
                 tracking_algorithm,
                 tracking_domain,
