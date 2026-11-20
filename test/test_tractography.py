@@ -1,9 +1,8 @@
-import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 import nibabel as nib
 import numpy as np
+import pytest
 from scipy.sparse import csr_matrix
 from scipy.spatial import cKDTree
 
@@ -13,12 +12,7 @@ import test
 import test.data
 from test.test_algorithms import make_algorithm
 
-_TEST_RESULTS_DIR = (
-    Path(__file__).parents[1] / "test-results" / "tractography" / "connectome"
-)
-_TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
-class TestTOD(unittest.TestCase):
+class TestTOD:
     """Test the tg.tod function"""
 
     def test_tod_with_explicit_domain_and_algorithm(self):
@@ -35,10 +29,10 @@ class TestTOD(unittest.TestCase):
             maximum_streamline_length=20.0,
         )
         tod_data = tod.get_fdata()
-        self.assertEqual(tod.shape, fod.shape[:3] + (45,))
-        self.assertTrue(np.isfinite(tod_data).all())
+        assert tod.shape == fod.shape[:3] + (45,)
+        assert np.isfinite(tod_data).all()
         populated = tod_data[..., 0] != 0
-        self.assertTrue(np.any(populated))
+        assert np.any(populated)
         np.testing.assert_allclose(
             tod_data[..., 0][populated], 1.0 / np.sqrt(4.0 * np.pi)
         )
@@ -48,10 +42,11 @@ class TestTOD(unittest.TestCase):
         result = tg.tod(
             tg.field.Image(fod), n_seeds=16, maximum_streamline_length=2.0
         )
-        self.assertEqual(result.shape, fod.shape[:3] + (45,))
+        assert result.shape == fod.shape[:3] + (45,)
 
 
-class TestTractography(unittest.TestCase):
+
+class TestTractography:
     """Test the tg.tractogram function"""
 
     def test_low_level_tracker_rejects_noncanonical_seed_arrays(self):
@@ -60,13 +55,13 @@ class TestTractography(unittest.TestCase):
         field = tg.field.Image(nib.Nifti1Image(np.ones((1, 1, 1, 1)), np.eye(4)))
         algorithm = tg.algorithm.Transport(tg.local.RealSymmetricSphericalHarmonics(1))
 
-        with self.assertRaisesRegex(ValueError, r"shape \(n_seeds, 8\)"):
+        with pytest.raises(ValueError, match=r"shape \(n_seeds, 8\)"):
             tg.tracking.tractogram(
                 algorithm, domain, field, np.empty((1, 6), dtype=np.float32)
             )
 
         bad_homogeneous = np.zeros((1, 8), dtype=np.float32)
-        with self.assertRaisesRegex(ValueError, "homogeneous values"):
+        with pytest.raises(ValueError, match="homogeneous values"):
             tg.tracking.tractogram(algorithm, domain, field, bad_homogeneous)
 
     def test_image_default_algorithm_and_boundary_seeds(self):
@@ -76,7 +71,7 @@ class TestTractography(unittest.TestCase):
             8,
             maximum_streamline_length=2.0,
         )
-        self.assertEqual(len(result), 8)
+        assert len(result) == 8
 
     def test_field_and_explicit_domain(self):
         fod, seed_mask, _ = test.data.cross()
@@ -86,7 +81,7 @@ class TestTractography(unittest.TestCase):
             tg.domain.Image(seed_mask),
             maximum_streamline_length=2.0,
         )
-        self.assertEqual(len(result), 8)
+        assert len(result) == 8
 
     def test_simple(self):
         """Test the simplest use case"""
@@ -105,10 +100,11 @@ class TestTractography(unittest.TestCase):
             minimum_streamline_length=10.0,
             batch_size=50000,
         )
-        self.assertLessEqual(len(streamlines), n_seeds)
+        assert len(streamlines) <= n_seeds
 
 
-class TestConnectome(unittest.TestCase):
+
+class TestConnectome:
     """Test the tg.connectome function"""
 
     def test_without_segmentation_preserves_directionality(self):
@@ -126,9 +122,9 @@ class TestConnectome(unittest.TestCase):
         with patch.object(tg.tracking, "connectome", return_value=directed):
             matrix, labels = tg.connectome(fod, n_seeds=1)
 
-        self.assertIs(matrix, directed)
-        self.assertEqual(matrix[0, 1], 1.0)
-        self.assertEqual(matrix[1, 0], 0.0)
+        assert matrix is directed
+        assert matrix[0, 1] == 1.0
+        assert matrix[1, 0] == 0.0
         np.testing.assert_array_equal(labels, np.arange(n_vertices))
 
     def test_segmentation_aggregation_preserves_directionality(self):
@@ -157,8 +153,8 @@ class TestConnectome(unittest.TestCase):
             )
 
         np.testing.assert_array_equal(labels, [1, 2])
-        self.assertEqual(matrix[0, 1], 1.0)
-        self.assertEqual(matrix[1, 0], 0.0)
+        assert matrix[0, 1] == 1.0
+        assert matrix[1, 0] == 0.0
 
     def test_without_segmentation_returns_boundary_connectome(self):
         fod, _, _ = test.data.cross()
@@ -168,17 +164,14 @@ class TestConnectome(unittest.TestCase):
             maximum_streamline_length=2.0,
         )
 
-        self.assertIsInstance(matrix, csr_matrix)
-        self.assertEqual(matrix.shape, (len(labels), len(labels)))
+        assert isinstance(matrix, csr_matrix)
+        assert matrix.shape == (len(labels), len(labels))
         np.testing.assert_array_equal(labels, np.arange(len(labels)))
 
     def test_cross_deterministic(self):
         """Test that the connectivity matrix from the deterministic algorithm has the expected shape and labels"""
 
         fod, wm, segmentation = test.data.cross()
-        nib.save(fod, _TEST_RESULTS_DIR / "cross-fod.nii.gz")
-        nib.save(wm, _TEST_RESULTS_DIR / "cross-wm.nii.gz")
-        nib.save(segmentation, _TEST_RESULTS_DIR / "cross-segmentation.nii.gz")
         fod = tg.nifti.multiply(fod, wm)
         n_seeds = 10000
         tracking_algorithm = make_algorithm(fod, tg.algorithm.Deterministic)
@@ -195,27 +188,24 @@ class TestConnectome(unittest.TestCase):
         np.testing.assert_array_equal(labels, [1, 2, 3, 4])
 
         # The matrix should be square with one row/column per label.
-        self.assertEqual(matrix.shape, (4, 4))
+        assert matrix.shape == (4, 4)
 
         # The diagonal should be zero or very small (streamlines connecting a
         # region to itself are uncommon in a crossing geometry).
-        self.assertTrue(np.all(matrix.diagonal() < 0.1 * matrix.sum()))
+        assert np.all(matrix.diagonal() < 0.1 * matrix.sum())
 
         # The total number of connections should be positive, meaning some
         # streamlines did reach labeled regions.
-        self.assertGreater(matrix.sum(), 0)
+        assert matrix.sum() > 0
 
         # Region 1 should be connected mostly to 2. Region 3 should be connected mostly to 4.
-        self.assertTrue(np.argmax(matrix[0]) == 1)
-        self.assertTrue(np.argmax(matrix[2]) == 3)
+        assert np.argmax(matrix[0]) == 1
+        assert np.argmax(matrix[2]) == 3
 
     def test_cross_probabilistic(self):
         """Test that the connectivity matrix from the probabilistic algorithm has the expected shape and labels"""
 
         fod, wm, segmentation = test.data.cross()
-        nib.save(fod, _TEST_RESULTS_DIR / "cross-fod.nii.gz")
-        nib.save(wm, _TEST_RESULTS_DIR / "cross-wm.nii.gz")
-        nib.save(segmentation, _TEST_RESULTS_DIR / "cross-segmentation.nii.gz")
         fod = tg.nifti.multiply(fod, wm)
         n_seeds = 10000
         tracking_algorithm = make_algorithm(fod, tg.algorithm.Probabilistic)
@@ -232,19 +222,19 @@ class TestConnectome(unittest.TestCase):
         np.testing.assert_array_equal(labels, [1, 2, 3, 4])
 
         # The matrix should be square with one row/column per label.
-        self.assertEqual(matrix.shape, (4, 4))
+        assert matrix.shape == (4, 4)
 
         # The diagonal should be zero or very small (streamlines connecting a
         # region to itself are uncommon in a crossing geometry).
-        self.assertTrue(np.all(matrix.diagonal() < 0.1 * matrix.sum()))
+        assert np.all(matrix.diagonal() < 0.1 * matrix.sum())
 
         # The total number of connections should be positive, meaning some
         # streamlines did reach labeled regions.
-        self.assertGreater(matrix.sum(), 0)
+        assert matrix.sum() > 0
 
         # Region 1 should be connected mostly to 2. Region 3 should be connected mostly to 4.
-        self.assertTrue(np.argmax(matrix[0]) == 1)
-        self.assertTrue(np.argmax(matrix[2]) == 3)
+        assert np.argmax(matrix[0]) == 1
+        assert np.argmax(matrix[2]) == 3
 
     def test_cross_diffusion(self):
         """Test that the connectivity matrix from the diffusion algorithm has the expected shape and labels"""
@@ -265,11 +255,11 @@ class TestConnectome(unittest.TestCase):
         )
 
         np.testing.assert_array_equal(labels, [1, 2, 3, 4])
-        self.assertEqual(matrix.shape, (4, 4))
-        self.assertTrue(np.all(matrix.diagonal() < 0.1 * matrix.sum()))
-        self.assertGreater(matrix.sum(), 0)
-        self.assertTrue(np.argmax(matrix[0]) == 1)
-        self.assertTrue(np.argmax(matrix[2]) == 3)
+        assert matrix.shape == (4, 4)
+        assert np.all(matrix.diagonal() < 0.1 * matrix.sum())
+        assert matrix.sum() > 0
+        assert np.argmax(matrix[0]) == 1
+        assert np.argmax(matrix[2]) == 3
 
     def test_cross_transport(self):
         """Test that the connectivity matrix from the transport algorithm has the expected shape and labels"""
@@ -288,8 +278,8 @@ class TestConnectome(unittest.TestCase):
         )
 
         np.testing.assert_array_equal(labels, [1, 2, 3, 4])
-        self.assertEqual(matrix.shape, (4, 4))
-        self.assertTrue(np.all(matrix.diagonal() < 0.1 * matrix.sum()))
-        self.assertGreater(matrix.sum(), 0)
-        self.assertTrue(np.argmax(matrix[0]) == 1)
-        self.assertTrue(np.argmax(matrix[2]) == 3)
+        assert matrix.shape == (4, 4)
+        assert np.all(matrix.diagonal() < 0.1 * matrix.sum())
+        assert matrix.sum() > 0
+        assert np.argmax(matrix[0]) == 1
+        assert np.argmax(matrix[2]) == 3

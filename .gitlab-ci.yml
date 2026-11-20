@@ -19,8 +19,8 @@ test-job:
     - conda install -yq scipy
     - conda install -c conda-forge pocl
     - conda install -c conda-forge pyopencl
-    - pip install coverage
+    - pip install coverage pytest
     - pip install -e .
-    - coverage run -m unittest -v
-    - coverage report
+    - PYTHONDONTWRITEBYTECODE=1 COVERAGE_FILE=/tmp/tractography-coverage coverage run -m pytest -p no:cacheprovider test --ignore-glob='*/integration/*' -v
+    - COVERAGE_FILE=/tmp/tractography-coverage coverage report
   coverage: '/TOTAL.+ ([0-9]{1,3}%)/'

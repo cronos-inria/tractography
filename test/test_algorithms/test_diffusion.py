@@ -1,8 +1,6 @@
-import unittest
-from pathlib import Path
-
 import nibabel as nib
 import numpy as np
+import pytest
 
 import tractography as tg
 from tractography.opencl import OpenCLRuntime
@@ -14,7 +12,7 @@ from test.test_algorithms.exact_solutions import (
 )
 
 
-class TestExactSolutions(unittest.TestCase):
+class TestExactSolutions:
     def test_exact_zero_noise_solution(self):
         """With zero noise, diffusion follows the analytic cross-term drift."""
         epsilon = 0.3
@@ -73,7 +71,7 @@ class TestExactSolutions(unittest.TestCase):
         np.testing.assert_array_almost_equal(streamline, expected, decimal=3)
 
 
-class TestTractogram(unittest.TestCase):
+class TestTractogram:
     """Test the OpenCL implementation of Diffusion tractography"""
 
     def test_uniform_isotropic(self):
@@ -90,7 +88,7 @@ class TestTractogram(unittest.TestCase):
         streamlines = tracto.streamlines
 
         # Verify the number of streamline produced.
-        self.assertEqual(len(streamlines), len(seeds))
+        assert len(streamlines) == len(seeds)
 
     def test_cross_dti(self):
         """Test tractography on the DTI cross dataset"""
@@ -110,7 +108,7 @@ class TestTractogram(unittest.TestCase):
         streamlines = tracto.streamlines
 
         # Verify the number of streamline produced.
-        self.assertEqual(len(streamlines), len(seeds))
+        assert len(streamlines) == len(seeds)
 
     def test_cross(self):
         """Test tractography on the cross dataset"""
@@ -124,7 +122,7 @@ class TestTractogram(unittest.TestCase):
         streamlines = tracto.streamlines
 
         # Verify the number of streamline produced.
-        self.assertEqual(len(streamlines), len(seeds))
+        assert len(streamlines) == len(seeds)
 
     def test_circle_dti(self):
         """Test diffusion tractography on the circle dataset, with DTI data"""
@@ -150,7 +148,7 @@ class TestTractogram(unittest.TestCase):
         # The streamlines should run until the maximum length is reached.
         for streamline in streamlines:
             length = len(streamline) * 0.25
-            self.assertAlmostEqual(length, maximum_length)
+            assert length == pytest.approx(maximum_length)
 
     def test_circle(self):
         """Test tractography on the circle dataset"""
@@ -188,4 +186,4 @@ class TestTractogram(unittest.TestCase):
         # The streamlines should run until the maximum lenght is reached.
         for streamline in streamlines:
             length = len(streamline) * 0.25
-            self.assertAlmostEqual(length, maximum_length)
+            assert length == pytest.approx(maximum_length)

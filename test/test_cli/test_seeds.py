@@ -1,28 +1,23 @@
 import subprocess
-import unittest
-from pathlib import Path
 
 import nibabel as nib
 import nimesh
 import numpy as np
+import pytest
 
 import tractography as tg
 import tractography.cli.seeds
 import test
 
 
-_TEST_RESULTS_DIR = Path(__file__).parents[2] / "test-results" / "cli" / "seeds"
-
-
-class TestSeeds(unittest.TestCase):
+class TestSeeds:
     """Test the generation of seeds using the CLI"""
 
-    def setUp(self):
-        _TEST_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
+    @pytest.fixture(autouse=True)
+    def setup_inputs(self, tmp_path):
         # Prepare the data.
         fod, _, _ = test.data.cross()
-        fod_path = _TEST_RESULTS_DIR / "cross-fod.nii.gz"
+        fod_path = tmp_path / "cross-fod.nii.gz"
         nib.save(fod, fod_path)
         self.fod_path = fod_path
         self.n_seeds = 1000
@@ -31,16 +26,19 @@ class TestSeeds(unittest.TestCase):
         """Test generating seeds from FODs"""
 
         # Generate the seeds from the API.
-        seeds_path = _TEST_RESULTS_DIR / "cross-seeds-fod-api.tck"
+        seeds_path = self.fod_path.parent / "cross-seeds-fod-api.tck"
         tg.cli.seeds.from_fod(self.fod_path, self.n_seeds, seeds_path)
         seeds = tg.seeds.load(seeds_path)
-        self.assertEqual(len(seeds), self.n_seeds)
+        assert len(seeds) == self.n_seeds
 
         # Generate the seeds from the CLI.
-        seeds_path = _TEST_RESULTS_DIR / "cross-seeds-fod-cli.tck"
-        subprocess.run(["tractography", "seeds", "from-fod", self.fod_path, str(self.n_seeds), seeds_path])
+        seeds_path = self.fod_path.parent / "cross-seeds-fod-cli.tck"
+        subprocess.run(
+            ["tractography", "seeds", "from-fod", str(self.fod_path), str(self.n_seeds), str(seeds_path)],
+            check=True,
+        )
         seeds = tg.seeds.load(seeds_path)
-        self.assertEqual(len(seeds), self.n_seeds)
+        assert len(seeds) == self.n_seeds
 
     def test_from_surface(self):
         """Test generating seeds from FODs"""
@@ -55,17 +53,20 @@ class TestSeeds(unittest.TestCase):
             [0, 1, 2],
         ])
         surface = nimesh.Mesh(vertices, triangles)
-        surface_path = _TEST_RESULTS_DIR / "cross.gii"
+        surface_path = self.fod_path.parent / "cross.gii"
         nimesh.io.save(surface_path, surface)
 
         # Generate the seeds from the API.
-        seeds_path = _TEST_RESULTS_DIR / "cross-seeds-surface-api.tck"
+        seeds_path = self.fod_path.parent / "cross-seeds-surface-api.tck"
         tg.cli.seeds.from_surface(surface_path, self.n_seeds, seeds_path)
         seeds = tg.seeds.load(seeds_path)
-        self.assertEqual(len(seeds), self.n_seeds)
+        assert len(seeds) == self.n_seeds
 
         # Generate the seeds from the CLI.
-        seeds_path = _TEST_RESULTS_DIR / "cross-seeds-surface-cli.tck"
-        subprocess.run(["tractography", "seeds", "from-surface", surface_path, str(self.n_seeds), seeds_path])
+        seeds_path = self.fod_path.parent / "cross-seeds-surface-cli.tck"
+        subprocess.run(
+            ["tractography", "seeds", "from-surface", str(surface_path), str(self.n_seeds), str(seeds_path)],
+            check=True,
+        )
         seeds = tg.seeds.load(seeds_path)
-        self.assertEqual(len(seeds), self.n_seeds)
+        assert len(seeds) == self.n_seeds
