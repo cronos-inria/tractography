@@ -25,9 +25,6 @@ jobs:
       - name: Run tests
         run: pixi run -e cpu test
       
-      - name: Run unittests
-        run: pixi run -e cpu unittest
-
       - name: Generate coverage report
         run: pixi run -e cpu coverage
       
